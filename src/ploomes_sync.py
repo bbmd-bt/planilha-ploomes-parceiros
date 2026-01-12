@@ -112,12 +112,11 @@ class PloomesSync:
                 self.logger.warning(f"CNJ {cnj}: negócio não encontrado")
                 return result
 
-            if len(deals) > 1:
-                result.error_message = f"Múltiplos negócios encontrados ({len(deals)})"
-                self.logger.warning(f"CNJ {cnj}: múltiplos negócios encontrados, pulando")
-                return result
-
-            deal = deals[0]
+            if len(deals) == 1:
+                deal = deals[0]
+            else:
+                self.logger.warning(f"CNJ {cnj}: múltiplos negócios encontrados ({len(deals)}), usando o segundo")
+                deal = deals[1]
             deal_id = deal.get("Id")
             current_stage = deal.get("StageId")
 

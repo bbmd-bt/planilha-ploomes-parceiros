@@ -98,6 +98,27 @@ class TestPloomesSync:
         # Verifica que delete não foi chamado
         mock_client.delete_deal.assert_not_called()
 
+    def test_process_single_cnj_multiple_deals(self, sync, mock_client):
+        """Testa processamento quando múltiplos negócios são encontrados (deve usar o segundo)."""
+        mock_client.search_deals_by_cnj.return_value = [
+            {"Id": 123, "StageId": 456},
+            {"Id": 789, "StageId": 101}
+        ]
+        mock_client.update_deal_stage.return_value = True
+        mock_client.delete_deal.return_value = True
+
+        result = sync._process_single_cnj("12345678901234567890")
+
+        assert result.cnj == "12345678901234567890"
+        assert result.deal_id == 789  # Deve usar o segundo negócio
+        assert result.moved_successfully is True
+        assert result.deleted_successfully is True
+        assert result.error_message is None
+
+        # Verifica chamadas com o ID do segundo negócio
+        mock_client.update_deal_stage.assert_called_once_with(789, 999)
+        mock_client.delete_deal.assert_called_once_with(789)
+
     def test_process_cnj_list(self, sync, mock_client):
         """Testa processamento de lista de CNJs."""
         # Configura mocks para dois CNJs

@@ -78,11 +78,9 @@ class PloomesClient:
         Returns:
             Lista de dicionários representando os negócios encontrados
         """
-        # Remove formatação do CNJ para busca
-        cnj_clean = cnj.replace(".", "").replace("-", "")
 
         # Endpoint para buscar negócios com filtro por CNJ
-        endpoint = f"Deals?$filter=OtherProperties/any(op: op/FieldKey eq 'contact_E194771F-3213-45E1-969F-1F850F95CEC2' and op/StringValue eq '{cnj_clean}')"
+        endpoint = f"Deals?$filter=OtherProperties/any(op: op/FieldKey eq 'deal_20E8290A-809B-4CF1-9345-6B264AED7830' and op/StringValue eq '{cnj}')"
 
         try:
             response = self._make_request("GET", endpoint)
