@@ -1,0 +1,7 @@
+Linha 10: Escritório corrigido via fuzzy match - Original: 'ABREU E BRITO GOMES ADVOGADOS ASSOCIADOS' → Corrigido: 'ABREU & BRITO GOMES ADVOGADOS ASSOCIADOS'
+Linha 16: Escritório corrigido via fuzzy match - Original: 'FERRAREZE E FREITAS ADVOGADOS  ASSOCIADOS' → Corrigido: 'FERRAREZE E FREITAS ADVOGADOS ASSOCIADOS'
+Linha 22: CNJ inválido - Valor original: '123456'
+Linha 23: CNJ inválido - Valor original: '123456'2026-01-12 13:56:48,287 - INFO - Processamento conclu�do.
+2026-01-12 13:56:48,287 - INFO - Linhas processadas: 27
+2026-01-12 13:56:48,287 - INFO - Linhas com erro: 4
+2026-01-12 13:56:48,288 - WARNING - Veja detalhes no log: C:\Users\SPOCK\OneDrive - BT BLUE ATIVOS JUDICIAIS LTDA\workspace\automa��es\planilha-ploomes-parceiros\logs\processamento_20260112_135644.log

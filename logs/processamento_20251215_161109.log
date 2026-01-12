@@ -1,0 +1,46 @@
+2025-12-15 16:11:09,981 [INFO] Lendo planilha de entrada: C:\Users\SPOCK\OneDrive - BT BLUE ATIVOS JUDICIAIS LTDA\workspace\automações\planilha-ploomes-parceiros\input\12-12-2025\btblue\Negócios em aberto.xlsx
+2025-12-15 16:11:10,140 [INFO] Salvando planilha de saída: C:\Users\SPOCK\OneDrive - BT BLUE ATIVOS JUDICIAIS LTDA\workspace\automações\planilha-ploomes-parceiros\output\12-12-2025\btblue\importacao_parceiros.xlsx
+2025-12-15 16:11:10,142 [ERROR] Erro durante o processamento:
+2025-12-15 16:11:10,403 [ERROR] Traceback (most recent call last):
+  File "C:\Users\SPOCK\OneDrive - BT BLUE ATIVOS JUDICIAIS LTDA\workspace\automações\planilha-ploomes-parceiros\src\main.py", line 77, in main
+    df_out.to_excel(output_path, index=False)
+  File "C:\Users\SPOCK\OneDrive - BT BLUE ATIVOS JUDICIAIS LTDA\workspace\automações\planilha-ploomes-parceiros\venv\Lib\site-packages\pandas\util\_decorators.py", line 333, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\SPOCK\OneDrive - BT BLUE ATIVOS JUDICIAIS LTDA\workspace\automações\planilha-ploomes-parceiros\venv\Lib\site-packages\pandas\core\generic.py", line 2439, in to_excel
+    formatter.write(
+  File "C:\Users\SPOCK\OneDrive - BT BLUE ATIVOS JUDICIAIS LTDA\workspace\automações\planilha-ploomes-parceiros\venv\Lib\site-packages\pandas\io\formats\excel.py", line 943, in write
+    writer = ExcelWriter(
+             ^^^^^^^^^^^^
+  File "C:\Users\SPOCK\OneDrive - BT BLUE ATIVOS JUDICIAIS LTDA\workspace\automações\planilha-ploomes-parceiros\venv\Lib\site-packages\pandas\io\excel\_openpyxl.py", line 61, in __init__
+    super().__init__(
+  File "C:\Users\SPOCK\OneDrive - BT BLUE ATIVOS JUDICIAIS LTDA\workspace\automações\planilha-ploomes-parceiros\venv\Lib\site-packages\pandas\io\excel\_base.py", line 1246, in __init__
+    self._handles = get_handle(
+                    ^^^^^^^^^^^
+  File "C:\Users\SPOCK\OneDrive - BT BLUE ATIVOS JUDICIAIS LTDA\workspace\automações\planilha-ploomes-parceiros\venv\Lib\site-packages\pandas\io\common.py", line 882, in get_handle
+    handle = open(handle, ioargs.mode)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 13] Permission denied: 'C:\\Users\\SPOCK\\OneDrive - BT BLUE ATIVOS JUDICIAIS LTDA\\workspace\\automações\\planilha-ploomes-parceiros\\output\\12-12-2025\\btblue\\importacao_parceiros.xlsx'
+
+
+[EXCEPTION TRACEBACK]
+Traceback (most recent call last):
+  File "C:\Users\SPOCK\OneDrive - BT BLUE ATIVOS JUDICIAIS LTDA\workspace\automações\planilha-ploomes-parceiros\src\main.py", line 77, in main
+    df_out.to_excel(output_path, index=False)
+  File "C:\Users\SPOCK\OneDrive - BT BLUE ATIVOS JUDICIAIS LTDA\workspace\automações\planilha-ploomes-parceiros\venv\Lib\site-packages\pandas\util\_decorators.py", line 333, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\SPOCK\OneDrive - BT BLUE ATIVOS JUDICIAIS LTDA\workspace\automações\planilha-ploomes-parceiros\venv\Lib\site-packages\pandas\core\generic.py", line 2439, in to_excel
+    formatter.write(
+  File "C:\Users\SPOCK\OneDrive - BT BLUE ATIVOS JUDICIAIS LTDA\workspace\automações\planilha-ploomes-parceiros\venv\Lib\site-packages\pandas\io\formats\excel.py", line 943, in write
+    writer = ExcelWriter(
+             ^^^^^^^^^^^^
+  File "C:\Users\SPOCK\OneDrive - BT BLUE ATIVOS JUDICIAIS LTDA\workspace\automações\planilha-ploomes-parceiros\venv\Lib\site-packages\pandas\io\excel\_openpyxl.py", line 61, in __init__
+    super().__init__(
+  File "C:\Users\SPOCK\OneDrive - BT BLUE ATIVOS JUDICIAIS LTDA\workspace\automações\planilha-ploomes-parceiros\venv\Lib\site-packages\pandas\io\excel\_base.py", line 1246, in __init__
+    self._handles = get_handle(
+                    ^^^^^^^^^^^
+  File "C:\Users\SPOCK\OneDrive - BT BLUE ATIVOS JUDICIAIS LTDA\workspace\automações\planilha-ploomes-parceiros\venv\Lib\site-packages\pandas\io\common.py", line 882, in get_handle
+    handle = open(handle, ioargs.mode)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 13] Permission denied: 'C:\\Users\\SPOCK\\OneDrive - BT BLUE ATIVOS JUDICIAIS LTDA\\workspace\\automações\\planilha-ploomes-parceiros\\output\\12-12-2025\\btblue\\importacao_parceiros.xlsx'
