@@ -101,7 +101,16 @@ class PloomesClient:
         """
         try:
             response = self._make_request("GET", f"Deals({deal_id})")
-            return response.json()
+            data = response.json()
+
+            # A API pode retornar um objeto direto ou dentro de "value"
+            if isinstance(data, dict) and "value" in data:
+                items = data.get("value") or []
+                if items:
+                    return items[0]
+                return None
+
+            return data
         except PloomesAPIError:
             return None
 

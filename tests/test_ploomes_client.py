@@ -77,10 +77,28 @@ class TestPloomesClient:
         assert mock_request.call_count == 2
 
     @patch('ploomes_client.requests.Session.request')
+    def test_update_deal_stage_success_value_wrapper(self, mock_request, client):
+        """Testa atualização de estágio quando a API retorna o negócio dentro de 'value'."""
+        mock_patch_response = Mock()
+        mock_get_response = Mock()
+        mock_get_response.json.return_value = {
+            "value": [
+                {"Id": 123, "StageId": 999}
+            ]
+        }
+
+        mock_request.side_effect = [mock_patch_response, mock_get_response]
+
+        result = client.update_deal_stage(123, 999)
+
+        assert result is True
+        assert mock_request.call_count == 2
+
+    @patch('ploomes_client.requests.Session.request')
     def test_update_deal_stage_failure(self, mock_request, client):
         """Testa falha na atualização de estágio."""
         # Mock de erro na requisição
-        mock_request.side_effect = Exception("API Error")
+        mock_request.side_effect = PloomesAPIError("API Error")
 
         result = client.update_deal_stage(123, 999)
 
@@ -104,7 +122,7 @@ class TestPloomesClient:
     @patch('ploomes_client.requests.Session.request')
     def test_delete_deal_failure(self, mock_request, client):
         """Testa falha na deleção de negócio."""
-        mock_request.side_effect = Exception("API Error")
+        mock_request.side_effect = PloomesAPIError("API Error")
 
         result = client.delete_deal(123)
 
