@@ -53,23 +53,21 @@ class TestPloomesSync:
 
     def test_process_single_cnj_success(self, sync, mock_client):
         """Testa processamento bem-sucedido de um CNJ."""
-        # Configura mocks
-        mock_client.search_deals_by_cnj.return_value = [{"Id": 123, "StageId": 456}]
-        mock_client.update_deal_stage.return_value = True
+        # Configura mocks - negócio no estágio de deleção
+        mock_client.search_deals_by_cnj.return_value = [{"Id": 123, "StageId": 888}]
         mock_client.delete_deal.return_value = True
 
         result = sync._process_single_cnj("12345678901234567890")
 
         assert result.cnj == "12345678901234567890"
         assert result.deal_id == 123
-        assert result.moved_successfully is True
         assert result.deleted_successfully is True
         assert result.error_message is None
 
         # Verifica chamadas
         mock_client.search_deals_by_cnj.assert_called_once_with("12345678901234567890")
-        mock_client.update_deal_stage.assert_called_once_with(123, 999)
         mock_client.delete_deal.assert_called_once_with(123)
+        mock_client.update_deal_stage.assert_not_called()
 
     def test_process_single_cnj_not_found(self, sync, mock_client):
         """Testa processamento quando negócio não é encontrado."""
@@ -83,17 +81,15 @@ class TestPloomesSync:
         assert result.deleted_successfully is False
         assert result.error_message == "Negócio não encontrado"
 
-    def test_process_single_cnj_move_failure(self, sync, mock_client):
-        """Testa processamento quando falha na movimentação."""
+    def test_process_single_cnj_not_in_deletion_stage(self, sync, mock_client):
+        """Testa processamento quando negócio não está no estágio de deleção."""
         mock_client.search_deals_by_cnj.return_value = [{"Id": 123, "StageId": 456}]
-        mock_client.update_deal_stage.return_value = False
 
         result = sync._process_single_cnj("12345678901234567890")
 
         assert result.deal_id == 123
-        assert result.moved_successfully is False
         assert result.deleted_successfully is False
-        assert result.error_message == "Falha ao mover para estágio alvo"
+        assert "não está no estágio de deleção" in result.error_message
 
         # Verifica que delete não foi chamado
         mock_client.delete_deal.assert_not_called()
@@ -102,41 +98,35 @@ class TestPloomesSync:
         """Testa processamento quando múltiplos negócios são encontrados (deve usar o segundo)."""
         mock_client.search_deals_by_cnj.return_value = [
             {"Id": 123, "StageId": 456},
-            {"Id": 789, "StageId": 101}
+            {"Id": 789, "StageId": 888}  # No estágio de deleção
         ]
-        mock_client.update_deal_stage.return_value = True
         mock_client.delete_deal.return_value = True
 
         result = sync._process_single_cnj("12345678901234567890")
 
         assert result.cnj == "12345678901234567890"
         assert result.deal_id == 789  # Deve usar o segundo negócio
-        assert result.moved_successfully is True
         assert result.deleted_successfully is True
         assert result.error_message is None
 
         # Verifica chamadas com o ID do segundo negócio
-        mock_client.update_deal_stage.assert_called_once_with(789, 999)
         mock_client.delete_deal.assert_called_once_with(789)
 
     def test_process_cnj_list(self, sync, mock_client):
         """Testa processamento de lista de CNJs."""
-        # Configura mocks para dois CNJs
+        # Configura mocks para dois CNJs: um no estágio errado, outro não encontrado
         mock_client.search_deals_by_cnj.side_effect = [
-            [{"Id": 123, "StageId": 456}],  # Primeiro CNJ encontrado
+            [{"Id": 123, "StageId": 456}],  # Primeiro CNJ encontrado mas não no estágio de deleção
             []  # Segundo CNJ não encontrado
         ]
-        mock_client.update_deal_stage.return_value = True
-        mock_client.delete_deal.return_value = True
 
         cnj_list = ["12345678901234567890", "99999999999999999999"]
         report = sync.process_cnj_list(cnj_list)
 
         assert report.total_processed == 2
-        assert report.successfully_moved == 1
-        assert report.successfully_deleted == 1
-        assert report.failed_movements == 1
-        assert report.skipped_deletions == 0
+        assert report.successfully_deleted == 0
+        assert report.failed_movements == 0
+        assert report.skipped_deletions == 1
         assert len(report.results) == 2
 
     @patch('ploomes_sync.pd.DataFrame.to_excel')

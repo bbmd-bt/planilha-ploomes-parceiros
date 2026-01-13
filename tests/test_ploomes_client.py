@@ -61,38 +61,39 @@ class TestPloomesClient:
     @patch('ploomes_client.requests.Session.request')
     def test_update_deal_stage_success(self, mock_request, client):
         """Testa atualização de estágio com sucesso."""
-        # Mock das respostas
-        mock_patch_response = Mock()
-        mock_get_response = Mock()
-        mock_get_response.json.return_value = {"Id": 123, "StageId": 999}
+        # Mock da resposta do PATCH
+        mock_response = Mock()
+        mock_response.json.return_value = {"Id": 123, "StageId": 999}
 
-        # Configura chamadas sequenciais
-        mock_request.side_effect = [mock_patch_response, mock_get_response]
+        mock_request.return_value = mock_response
 
         result = client.update_deal_stage(123, 999)
 
         assert result is True
 
-        # Verifica chamadas
-        assert mock_request.call_count == 2
+        # Verifica chamada do PATCH
+        assert mock_request.call_count == 1
+        args = mock_request.call_args
+        assert args[0][0] == "PATCH"
+        assert "Deals(123)" in args[0][1]
 
+    @patch('ploomes_client.time.sleep')
     @patch('ploomes_client.requests.Session.request')
-    def test_update_deal_stage_success_value_wrapper(self, mock_request, client):
+    def test_update_deal_stage_success_value_wrapper(self, mock_request, mock_sleep, client):
         """Testa atualização de estágio quando a API retorna o negócio dentro de 'value'."""
-        mock_patch_response = Mock()
-        mock_get_response = Mock()
-        mock_get_response.json.return_value = {
+        mock_response = Mock()
+        mock_response.json.return_value = {
             "value": [
                 {"Id": 123, "StageId": 999}
             ]
         }
 
-        mock_request.side_effect = [mock_patch_response, mock_get_response]
+        mock_request.return_value = mock_response
 
         result = client.update_deal_stage(123, 999)
 
         assert result is True
-        assert mock_request.call_count == 2
+        assert mock_request.call_count == 1
 
     @patch('ploomes_client.requests.Session.request')
     def test_update_deal_stage_failure(self, mock_request, client):

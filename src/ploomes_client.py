@@ -130,15 +130,22 @@ class PloomesClient:
         }
 
         try:
-            self._make_request("PATCH", f"Deals({deal_id})", json=payload)
-            self.logger.info(f"Negócio {deal_id} movido para estágio {stage_id}")
+            response = self._make_request("PATCH", f"Deals({deal_id})", json=payload)
+            updated_deal = response.json()
 
-            # Verifica se a mudança foi realmente aplicada
-            deal = self.get_deal_by_id(deal_id)
-            if deal and deal.get("StageId") == stage_id:
+            # Trata resposta similar ao get_deal_by_id
+            if isinstance(updated_deal, dict) and "value" in updated_deal:
+                items = updated_deal.get("value") or []
+                if items:
+                    updated_deal = items[0]
+                else:
+                    updated_deal = None
+
+            if updated_deal and str(updated_deal.get("StageId")) == str(stage_id):
+                self.logger.info(f"Negócio {deal_id} movido com sucesso para estágio {stage_id}")
                 return True
             else:
-                self.logger.warning(f"Falha na verificação: negócio {deal_id} não está no estágio esperado {stage_id}")
+                self.logger.warning(f"PATCH não atualizou o estágio corretamente para negócio {deal_id}")
                 return False
 
         except PloomesAPIError as e:

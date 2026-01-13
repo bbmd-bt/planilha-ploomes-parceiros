@@ -61,9 +61,9 @@ class PloomesSync:
 
         Regras:
         1. Para cada CNJ, buscar negócio na Ploomes
-        2. Mover negócio para target_stage_id
-        3. Se movimento falhar, pular deleção
-        4. Se movimento for bem-sucedido, deletar o negócio
+        2. Verificar se o negócio está no estágio de deleção
+        3. Se estiver, deletar o negócio
+        4. Caso contrário, pular
 
         Args:
             cnj_list: Lista de CNJs para processar
@@ -78,14 +78,15 @@ class PloomesSync:
             report.results.append(result)
             report.total_processed += 1
 
-            if result.moved_successfully:
-                report.successfully_moved += 1
-                if result.deleted_successfully:
-                    report.successfully_deleted += 1
-            else:
-                report.failed_movements += 1
-                if result.error_message and "não encontrado" not in result.error_message.lower():
+            if result.deleted_successfully:
+                report.successfully_deleted += 1
+            elif result.error_message:
+                if "não encontrado" in result.error_message.lower():
+                    pass  # negócio não encontrado
+                elif "não está no estágio" in result.error_message.lower():
                     report.skipped_deletions += 1
+                else:
+                    report.failed_movements += 1  # falha na deleção
 
         self.logger.info(f"Processamento concluído: {report.total_processed} CNJs processados")
         return report
@@ -127,21 +128,18 @@ class PloomesSync:
             result.deal_id = deal_id
             self.logger.info(f"CNJ {cnj}: negócio encontrado (ID: {deal_id}, Stage: {current_stage})")
 
-            # 2. Mover para estágio alvo
-            if not self.client.update_deal_stage(deal_id, self.target_stage_id):
-                result.error_message = "Falha ao mover para estágio alvo"
-                self.logger.error(f"CNJ {cnj}: falha ao mover negócio {deal_id} para estágio {self.target_stage_id}")
+            # 2. Verificar se está no estágio de deleção
+            if str(current_stage) != str(self.deletion_stage_id):
+                result.error_message = f"Negócio não está no estágio de deleção ({self.deletion_stage_id})"
+                self.logger.info(f"CNJ {cnj}: negócio {deal_id} não está no estágio de deleção, pulando")
                 return result
 
-            result.moved_successfully = True
-            self.logger.info(f"CNJ {cnj}: negócio {deal_id} movido com sucesso para estágio {self.target_stage_id}")
-
-            # 3. Deletar o negócio (apenas se movimento foi bem-sucedido)
+            # 3. Deletar o negócio
             if self.client.delete_deal(deal_id):
                 result.deleted_successfully = True
                 self.logger.info(f"CNJ {cnj}: negócio {deal_id} deletado com sucesso")
             else:
-                result.error_message = "Falha na deleção após movimento bem-sucedido"
+                result.error_message = "Falha na deleção"
                 self.logger.error(f"CNJ {cnj}: falha ao deletar negócio {deal_id}")
 
         except Exception as e:
