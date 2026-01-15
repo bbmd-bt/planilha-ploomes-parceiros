@@ -254,10 +254,10 @@ Este projeto inclui um script independente para deletar negócios na Ploomes bas
 
 ### Funcionalidades
 
-- Lê CNJs de um arquivo Excel
-- Busca negócios correspondentes na API Ploomes
-- Move negócios para um estágio específico
-- Deleta apenas os negócios que foram movidos com sucesso
+- Lê CNJs de um arquivo Excel (negócios a preservar)
+- Busca todos os negócios no estágio de deleção criados antes da data atual
+- Exclui da deleção os negócios cujos CNJs estão na lista de preservação
+- Deleta os negócios antigos restantes
 - Gera relatório detalhado do processamento
 
 ### Pipelines Suportados
@@ -271,13 +271,33 @@ Este projeto inclui um script independente para deletar negócios na Ploomes bas
 ### Uso do Script de Deleção
 
 ```bash
+# Usando token do arquivo .env (recomendado)
+python src/delete_deals.py --input "input/cnjs_erro.xlsx" --pipeline "BT Blue Pipeline"
+
+# Ou especificando token diretamente
 python src/delete_deals.py --input "input/cnjs_erro.xlsx" --api-token "SEU_TOKEN_API" --pipeline "BT Blue Pipeline"
 ```
+
+### Configuração do Token da API
+
+O token da API Ploomes pode ser configurado de duas formas:
+
+1. **Arquivo .env** (recomendado):
+
+   ```bash
+   # Adicione ao arquivo .env
+   PLOOMES_API_TOKEN=33561FACC9647F23BFD0865B3D474D88F40F35E5307ABCC73986812497D3A7F1C329C405B1AFD2B15023A56641950E8D5084FC63B3995E064B911CB2DF834509
+   ```
+
+2. **Parâmetro de linha de comando**:
+   ```bash
+   --api-token "SEU_TOKEN_API"
+   ```
 
 ### Opções do Comando
 
 - `--input`: Caminho para o arquivo Excel de entrada (obrigatório)
-- `--api-token`: Token de autenticação da API Ploomes (obrigatório)
+- `--api-token`: Token de autenticação da API Ploomes (opcional se configurado no .env)
 - `--pipeline`: Nome do pipeline a ser usado (obrigatório)
 - `--output`: Caminho para o relatório de saída (opcional)
 - `--log`: Caminho para o arquivo de log (opcional)
@@ -297,10 +317,11 @@ O script gera um relatório Excel com duas abas:
 
 ### Regras de Processamento
 
-1. **Sequência**: Move o negócio para o estágio alvo primeiro
-2. **Validação**: Verifica se a movimentação foi bem-sucedida via API
-3. **Deleção**: Só deleta negócios que foram movidos com sucesso
-4. **Segurança**: Não deleta se a movimentação falhar
+1. **Carregamento**: Carregar CNJs do arquivo de entrada (estes negócios devem ser preservados)
+2. **Busca de Antigos**: Buscar todos os negócios no estágio de deleção criados antes da data atual
+3. **Filtragem**: Excluir da deleção os negócios cujos CNJs estão na lista de preservação
+4. **Deleção**: Deletar os negócios antigos filtrados
+5. **Preservação**: Os negócios do arquivo de entrada permanecem intocados na Ploomes
 
 ## Testes
 

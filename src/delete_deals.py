@@ -11,14 +11,22 @@ Uso:
 
 import argparse
 import logging
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
+from dotenv import load_dotenv
 
-from ploomes_client import PloomesClient
-from ploomes_sync import PloomesSync
+# Carregar variáveis de ambiente do arquivo .env
+load_dotenv()
+
+# Adicionar o diretório pai ao sys.path para imports absolutos funcionarem
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.ploomes_client import PloomesClient
+from src.ploomes_sync import PloomesSync
 
 
 # Mapeamento de pipelines para estágios
@@ -72,17 +80,16 @@ def main():
         epilog="""
 Exemplos de uso:
 
-# Processar arquivo com pipeline BT Blue
+# Processar arquivo com pipeline BT Blue (token do .env)
 python src/delete_deals.py \\
   --input "input/cnjs_erro.xlsx" \\
-  --api-token "33561FACC9647F23BFD0865B3D474D88F40F35E5307ABCC73986812497D3A7F1C329C405B1AFD2B15023A56641950E8D5084FC63B3995E064B911CB2DF834509" \\
   --pipeline "BT Blue Pipeline" \\
   --output "output/relatorio_delecao.xlsx"
 
-# Com logging detalhado
+# Com token específico
 python src/delete_deals.py \\
   --input "input/cnjs.xlsx" \\
-  --api-token "TOKEN_AQUI" \\
+  --api-token "TOKEN_ESPECIFICO" \\
   --pipeline "2B Ativos Pipeline" \\
   --log-level DEBUG \\
   --log "logs/delete_deals.log"
@@ -98,8 +105,8 @@ python src/delete_deals.py \\
 
     parser.add_argument(
         "--api-token", "-t",
-        required=True,
-        help="Token de autenticação da API Ploomes"
+        default=os.getenv("PLOOMES_API_TOKEN"),
+        help="Token de autenticação da API Ploomes (padrão: valor do .env)"
     )
 
     parser.add_argument(
@@ -149,6 +156,11 @@ python src/delete_deals.py \\
         pipeline_config = validate_pipeline(args.pipeline)
     except ValueError as e:
         logger.error(str(e))
+        sys.exit(1)
+
+    # Valida token da API
+    if not args.api_token:
+        logger.error("Token da API Ploomes não encontrado. Configure a variável PLOOMES_API_TOKEN no arquivo .env ou passe --api-token")
         sys.exit(1)
 
     # Define caminho de saída padrão

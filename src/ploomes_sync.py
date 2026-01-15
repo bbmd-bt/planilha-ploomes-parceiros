@@ -6,12 +6,17 @@ mover negócios para estágios específicos e deletar aqueles que falharam.
 """
 
 import logging
+import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, List, Optional
 
 import pandas as pd
 
-from ploomes_client import PloomesClient
+# Adicionar o diretório pai ao sys.path para imports funcionarem
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.ploomes_client import PloomesClient
 
 
 @dataclass
@@ -60,40 +65,87 @@ class PloomesSync:
         Processa uma lista de CNJs seguindo as regras de negócio.
 
         Regras:
-        1. Para cada CNJ, buscar negócio na Ploomes
-        2. Verificar se o negócio está no estágio de deleção
-        3. Se estiver, deletar o negócio
-        4. Caso contrário, pular
+        1. Carregar CNJs do arquivo (esses negócios devem ser preservados)
+        2. Buscar todos os negócios no estágio de deleção criados antes da data atual
+        3. Excluir da deleção os negócios cujos CNJs estão na lista de preservação
+        4. Deletar os negócios restantes
 
         Args:
-            cnj_list: Lista de CNJs para processar
+            cnj_list: Lista de CNJs a preservar (não deletar)
 
         Returns:
             Relatório consolidado do processamento
         """
         report = SyncReport()
+        report.total_processed = len(cnj_list)
 
-        for cnj in cnj_list:
-            result = self._process_single_cnj(cnj)
-            report.results.append(result)
-            report.total_processed += 1
+        # Obter data de hoje no formato YYYY-MM-DD
+        from datetime import datetime
+        today = datetime.now().strftime("%Y-%m-%d")
 
-            if result.deleted_successfully:
-                report.successfully_deleted += 1
-            elif result.error_message:
-                if "não encontrado" in result.error_message.lower():
-                    pass  # negócio não encontrado
-                elif "não está no estágio" in result.error_message.lower():
-                    report.skipped_deletions += 1
-                else:
-                    report.failed_movements += 1  # falha na deleção
+        self.logger.info(f"Buscando negócios no estágio {self.deletion_stage_id} criados antes de {today}...")
 
-        self.logger.info(f"Processamento concluído: {report.total_processed} CNJs processados")
+        # Buscar todos os negócios antigos no estágio de deleção
+        old_deals = self.client.search_deals_by_stage(self.deletion_stage_id, created_before_date=today)
+
+        if not old_deals:
+            self.logger.info("Nenhum negócio antigo encontrado para deletar")
+            report.successfully_deleted = 0
+            report.skipped_deletions = 0
+            return report
+
+        self.logger.info(f"Encontrados {len(old_deals)} negócios antigos no estágio {self.target_stage_id}")
+
+        # Filtrar negócios cujos CNJs estão na lista de preservação
+        deals_to_delete = []
+        cnj_set = set(cnj_list)
+
+        for deal in old_deals:
+            # Extrair CNJ do deal (assumindo que está em OtherProperties)
+            cnj = self._extract_cnj_from_deal(deal)
+            if cnj and cnj in cnj_set:
+                self.logger.info(f"Preservando negócio {deal.get('Id')} com CNJ {cnj}")
+                continue
+            deals_to_delete.append(deal)
+
+        self.logger.info(f"{len(deals_to_delete)} negócios serão deletados")
+
+        # Deletar os negócios filtrados
+        deleted_count = 0
+        skipped_count = 0
+
+        for deal in deals_to_delete:
+            deal_id = deal.get("Id")
+            if deal_id and self.client.delete_deal(deal_id):
+                deleted_count += 1
+            else:
+                skipped_count += 1
+
+        report.successfully_deleted = deleted_count
+        report.skipped_deletions = skipped_count
+
+        self.logger.info(f"Processamento concluído: {deleted_count} deletados, {skipped_count} pulados")
         return report
 
-    def _process_single_cnj(self, cnj: str) -> ProcessingResult:
+    def _extract_cnj_from_deal(self, deal: Dict) -> Optional[str]:
         """
-        Processa um único CNJ.
+        Extrai o CNJ de um negócio Ploomes.
+
+        Args:
+            deal: Dicionário representando o negócio
+
+        Returns:
+            CNJ extraído ou None se não encontrado
+        """
+        other_properties = deal.get("OtherProperties", [])
+        for prop in other_properties:
+            if prop.get("FieldKey") == "deal_20E8290A-809B-4CF1-9345-6B264AED7830":
+                return str(prop.get("StringValue", "")).strip()
+        return None
+
+    def _move_cnj_to_deletion_stage(self, cnj: str) -> ProcessingResult:
+        """
+        Move um negócio de um CNJ para o estágio de deleção.
 
         Args:
             cnj: CNJ a ser processado
@@ -116,8 +168,20 @@ class PloomesSync:
             if len(deals) == 1:
                 deal = deals[0]
             else:
-                self.logger.warning(f"CNJ {cnj}: múltiplos negócios encontrados ({len(deals)}), usando o segundo")
-                deal = deals[1]
+                # Procurar por deals no estágio de deleção
+                deletion_stage_deals = [d for d in deals if str(d.get("StageId")) == str(self.deletion_stage_id)]
+                if deletion_stage_deals:
+                    if len(deletion_stage_deals) == 1:
+                        deal = deletion_stage_deals[0]
+                        self.logger.info(f"CNJ {cnj}: múltiplos negócios encontrados, usando o que está no estágio de deleção (ID: {deal.get('Id')})")
+                    else:
+                        deal = deletion_stage_deals[0]
+                        self.logger.warning(f"CNJ {cnj}: múltiplos negócios no estágio de deleção ({len(deletion_stage_deals)}), usando o primeiro (ID: {deal.get('Id')})")
+                else:
+                    result.error_message = f"Múltiplos negócios encontrados ({len(deals)}), mas nenhum está no estágio de deleção ({self.deletion_stage_id})"
+                    self.logger.warning(f"CNJ {cnj}: {result.error_message}")
+                    return result
+
             deal_id = deal.get("Id")
             current_stage = deal.get("StageId")
 
@@ -128,25 +192,62 @@ class PloomesSync:
             result.deal_id = deal_id
             self.logger.info(f"CNJ {cnj}: negócio encontrado (ID: {deal_id}, Stage: {current_stage})")
 
-            # 2. Verificar se está no estágio de deleção
-            if str(current_stage) != str(self.deletion_stage_id):
-                result.error_message = f"Negócio não está no estágio de deleção ({self.deletion_stage_id})"
-                self.logger.info(f"CNJ {cnj}: negócio {deal_id} não está no estágio de deleção, pulando")
-                return result
-
-            # 3. Deletar o negócio
-            if self.client.delete_deal(deal_id):
-                result.deleted_successfully = True
-                self.logger.info(f"CNJ {cnj}: negócio {deal_id} deletado com sucesso")
+            # 2. Mover para o estágio de deleção se não estiver já lá
+            if str(current_stage) == str(self.deletion_stage_id):
+                result.moved_successfully = True
+                self.logger.info(f"CNJ {cnj}: negócio {deal_id} já está no estágio de deleção")
             else:
-                result.error_message = "Falha na deleção"
-                self.logger.error(f"CNJ {cnj}: falha ao deletar negócio {deal_id}")
+                if self.client.update_deal_stage(deal_id, self.deletion_stage_id):
+                    result.moved_successfully = True
+                    self.logger.info(f"CNJ {cnj}: negócio {deal_id} movido para estágio de deleção")
+                else:
+                    result.error_message = "Falha ao mover negócio para estágio de deleção"
+                    self.logger.error(f"CNJ {cnj}: falha ao mover negócio {deal_id}")
 
         except Exception as e:
             result.error_message = f"Erro inesperado: {str(e)}"
             self.logger.error(f"CNJ {cnj}: erro inesperado - {e}")
 
         return result
+
+    def _delete_all_deals_in_deletion_stage(self) -> Dict[str, int]:
+        """
+        Deleta todos os negócios que estão no estágio de deleção.
+
+        Returns:
+            Dicionário com contadores de deletados e pulados
+        """
+        deleted_count = 0
+        skipped_count = 0
+
+        try:
+            # Buscar todos os negócios no estágio de deleção
+            deals = self.client.search_deals_by_stage(self.deletion_stage_id)
+
+            if not deals:
+                self.logger.info("Nenhum negócio encontrado no estágio de deleção")
+                return {"deleted_count": 0, "skipped_count": 0}
+
+            self.logger.info(f"Encontrados {len(deals)} negócios no estágio de deleção para deletar")
+
+            for deal in deals:
+                deal_id = deal.get("Id")
+                if deal_id:
+                    if self.client.delete_deal(deal_id):
+                        deleted_count += 1
+                    else:
+                        skipped_count += 1
+                        self.logger.warning(f"Falha ao deletar negócio {deal_id}")
+                else:
+                    skipped_count += 1
+                    self.logger.warning(f"Negócio sem ID encontrado: {deal}")
+
+        except Exception as e:
+            self.logger.error(f"Erro ao deletar negócios no estágio de deleção: {e}")
+            skipped_count += len(deals) if 'deals' in locals() else 0
+
+        self.logger.info(f"Deleção concluída: {deleted_count} deletados, {skipped_count} pulados")
+        return {"deleted_count": deleted_count, "skipped_count": skipped_count}
 
     @staticmethod
     def load_cnjs_from_excel(file_path: str) -> List[str]:
@@ -186,41 +287,23 @@ class PloomesSync:
             report: Relatório a ser exportado
             output_path: Caminho onde salvar o relatório
         """
-        # Cria DataFrame com resultados detalhados
-        data = []
-        for result in report.results:
-            data.append({
-                "CNJ": result.cnj,
-                "Deal ID": result.deal_id or "",
-                "Movido com Sucesso": "Sim" if result.moved_successfully else "Não",
-                "Deletado com Sucesso": "Sim" if result.deleted_successfully else "Não",
-                "Erro": result.error_message or ""
-            })
-
-        df_results = pd.DataFrame(data)
-
         # Cria DataFrame com estatísticas
         stats_data = {
             "Métrica": [
-                "Total Processado",
-                "Movidos com Sucesso",
+                "CNJs Carregados",
                 "Deletados com Sucesso",
-                "Falhas na Movimentação",
-                "Deleções Puladas"
+                "Falhas na Deleção"
             ],
             "Valor": [
                 report.total_processed,
-                report.successfully_moved,
                 report.successfully_deleted,
-                report.failed_movements,
                 report.skipped_deletions
             ]
         }
         df_stats = pd.DataFrame(stats_data)
 
-        # Salva em Excel com múltiplas abas
+        # Salva em Excel
         with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
-            df_results.to_excel(writer, sheet_name='Resultados Detalhados', index=False)
             df_stats.to_excel(writer, sheet_name='Estatísticas', index=False)
 
         self.logger.info(f"Relatório salvo em: {output_path}")

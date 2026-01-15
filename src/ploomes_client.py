@@ -170,19 +170,51 @@ class PloomesClient:
             self.logger.error(f"Erro ao deletar negócio {deal_id}: {e}")
             return False
 
-    def get_pipeline_stages(self, pipeline_id: int) -> List[Dict]:
+    def search_deals_by_stage(self, stage_id: int, created_before_date: str = None) -> List[Dict]:
         """
-        Busca os estágios de um pipeline específico.
+        Busca todos os negócios em um estágio específico.
 
         Args:
-            pipeline_id: ID do pipeline
+            stage_id: ID do estágio
+            created_before_date: Data máxima de criação (formato YYYY-MM-DD), opcional
 
         Returns:
-            Lista de estágios do pipeline
+            Lista de dicionários representando os negócios encontrados
         """
+        endpoint = f"Deals?$filter=StageId eq {stage_id}"
+
         try:
-            response = self._make_request("GET", f"Stages?$filter=PipelineId eq {pipeline_id}")
+            response = self._make_request("GET", endpoint)
             data = response.json()
-            return data.get("value", [])
+            deals = data.get("value", [])
+
+            # Filtrar localmente por data se especificado
+            if created_before_date and deals:
+                from datetime import datetime
+                cutoff_date = datetime.strptime(created_before_date, "%Y-%m-%d")
+                filtered_deals = []
+
+                for deal in deals:
+                    created_date_str = deal.get("CreateDate") or deal.get("CreatedDate")
+                    if created_date_str:
+                        try:
+                            # Parse ISO format date
+                            created_date = datetime.fromisoformat(created_date_str.replace('Z', '+00:00'))
+                            # Remove timezone info for comparison
+                            created_date = created_date.replace(tzinfo=None)
+
+                            if created_date < cutoff_date:
+                                filtered_deals.append(deal)
+                        except (ValueError, AttributeError):
+                            # Se falhar ao parsear a data, incluir o deal
+                            filtered_deals.append(deal)
+                    else:
+                        # Se não tiver data de criação, incluir o deal
+                        filtered_deals.append(deal)
+
+                deals = filtered_deals
+
+            self.logger.info(f"Encontrados {len(deals)} negócios no estágio {stage_id}" + (f" criados antes de {created_before_date}" if created_before_date else ""))
+            return deals
         except PloomesAPIError:
             return []
