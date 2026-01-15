@@ -16,6 +16,7 @@ planilha-ploomes-parceiros/
 │   ├── mapping.py           # Mapeamento de nomes de negociadores
 │   ├── transformer.py       # Lógica de transformação
 │   ├── main.py             # Script principal
+│   ├── db_updater.py       # Atualização de mapeamentos do banco de dados
 │   ├── extract_escritorios.py # Extração de escritórios únicos
 │   ├── ploomes_client.py    # Cliente para API Ploomes
 │   ├── ploomes_sync.py      # Lógica de sincronização
@@ -24,7 +25,10 @@ planilha-ploomes-parceiros/
 ├── input/                   # Planilhas de entrada (.xlsx)
 ├── output/                  # Planilhas de saída (.xlsx)
 ├── utils/                   # Utilitários e arquivos auxiliares
+│   ├── escritorios.json     # Mapeamento de escritórios
+│   └── negociadores.json    # Mapeamento de negociadores
 ├── logs/                    # Arquivos de log de erros
+├── .env.example            # Exemplo de configuração de ambiente
 ├── requirements.txt         # Dependências do projeto
 └── README.md               # Este arquivo
 ```
@@ -43,6 +47,14 @@ python -m venv venv
 ```bash
 pip install -r requirements.txt
 ```
+
+3. Configure o ambiente:
+
+```bash
+cp .env.example .env
+```
+
+Edite o arquivo `.env` com suas credenciais do banco de dados PostgreSQL.
 
 ## Uso
 
@@ -69,6 +81,7 @@ python src/main.py --input "caminho/entrada.xlsx" --mesa "Nome da Mesa" --output
 - `--output`: Caminho para o arquivo de saída (.xlsx, opcional)
 - `--log`: Caminho para o arquivo de log (opcional)
 - `--log-level`: Nível de log (DEBUG, INFO, WARNING, ERROR, padrão: INFO)
+- `--update-db`: Atualiza mapeamentos de escritórios e negociadores do banco de dados (opcional)
 
 ### Extração de Escritórios
 
@@ -84,6 +97,49 @@ Este script:
 - Extrai o campo `escritorio_responsavel` de cada registro
 - Remove duplicatas e registros vazios
 - Salva em `utils/escritorios.json` com formato otimizado para mapeamentos
+
+## Atualização de Mapeamentos do Banco de Dados
+
+O script suporta atualização automática de mapeamentos de escritórios e negociadores diretamente do banco de dados PostgreSQL.
+
+### Funcionalidades
+
+- Conecta ao banco de dados PostgreSQL usando credenciais do arquivo `.env`
+- Consulta a tabela `lead_snapshot` e extrai dados JSON do campo `payload`
+- Atualiza `utils/escritorios.json` com mapeamentos de escritórios
+- Atualiza `utils/negociadores.json` com mapeamentos de negociadores
+- Integra-se ao fluxo principal via flag `--update-db`
+
+### Configuração do Banco de Dados
+
+Configure as seguintes variáveis no arquivo `.env`:
+
+- `DB_HOST`: Host do banco de dados
+- `DB_PORT`: Porta do banco de dados (padrão: 5432)
+- `DB_NAME`: Nome do banco de dados
+- `DB_USER`: Usuário do banco de dados
+- `DB_PASSWORD`: Senha do banco de dados
+
+### Uso com Atualização de Banco
+
+Para executar a transformação com atualização automática dos mapeamentos:
+
+```bash
+python src/main.py --mesa "Nome da Mesa" --update-db
+```
+
+**Nota**: Se a atualização do banco falhar, a execução será abortada para evitar processamento com dados desatualizados.
+
+### Estrutura dos Dados JSON
+
+Os arquivos `utils/escritorios.json` e `utils/negociadores.json` contêm mapeamentos no formato:
+
+```json
+{
+  "1": "Escritório ABC",
+  "2": "Escritório XYZ"
+}
+```
 
 ## Formato da Planilha de Entrada
 
@@ -266,3 +322,5 @@ O projeto inclui configuração de CI/CD com GitHub Actions que executa testes a
 - python-Levenshtein 0.27.3
 - pytest 9.0.1
 - requests 2.31.0
+- psycopg2-binary 2.9.9
+- python-dotenv 1.0.0

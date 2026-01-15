@@ -10,6 +10,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).parent))
 
 from transformer import PlanilhaTransformer
+from db_updater import DatabaseUpdater, DatabaseUpdateError
 
 
 def main():
@@ -38,6 +39,7 @@ def main():
     )
     parser.add_argument("--log", default=None, type=Path, help="Arquivo de log de erros")
     parser.add_argument("--log-level", default="INFO", help="Nível de log (DEBUG, INFO, WARNING, ERROR)")
+    parser.add_argument("--update-db", action="store_true", help="Atualiza mapeamentos de escritórios e negociadores do banco de dados")
     args = parser.parse_args()
 
     # Configure logging
@@ -54,6 +56,15 @@ def main():
         handlers=handlers
     )
     logger = logging.getLogger(__name__)
+
+    # Atualiza banco de dados se solicitado
+    if args.update_db:
+        try:
+            updater = DatabaseUpdater()
+            updater.update_database()
+        except DatabaseUpdateError as e:
+            logger.error(f"Erro na atualização do banco de dados: {e}")
+            sys.exit(1)
 
     input_path = args.input
     mesa = args.mesa

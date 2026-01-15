@@ -142,3 +142,4 @@ output/
 errors/
 logs/
 screenshots/
+.env

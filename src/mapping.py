@@ -1,8 +1,15 @@
-# Mapeamento de nomes de negociadores
-NEGOTIATOR_MAPPING = {
-    "rômulo montenegro": "Maria Clara do Amaral Medeiros",
-    "Rômulo Montenegro": "Maria Clara do Amaral Medeiros",
-}
+import json
+from pathlib import Path
+
+# Carrega mapeamento de negociadores do arquivo JSON
+NEGOTIATOR_MAPPING = {}
+_base_dir = Path(__file__).parent.parent
+_neg_file = _base_dir / 'utils' / 'negociadores.json'
+try:
+    with open(_neg_file, 'r', encoding='utf-8') as f:
+        NEGOTIATOR_MAPPING = json.load(f)
+except FileNotFoundError:
+    pass  # Usa dicionário vazio se arquivo não encontrado
 
 
 def map_negotiator(name: str) -> str:
