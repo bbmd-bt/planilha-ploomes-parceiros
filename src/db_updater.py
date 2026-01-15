@@ -53,23 +53,27 @@ class DatabaseUpdater:
         negotiators = {}
         for row in rows:
             try:
-                payload = json.loads(row['payload'])
-                # Assuming payload has 'office' and 'negotiator' fields
-                if 'office' in payload:
-                    office_data = payload['office']
-                    if isinstance(office_data, dict):
-                        office_id = office_data.get('id')
-                        office_name = office_data.get('name')
-                        if office_id and office_name:
-                            offices[str(office_id)] = office_name
-                if 'negotiator' in payload:
-                    neg_data = payload['negotiator']
-                    if isinstance(neg_data, dict):
-                        neg_id = neg_data.get('id')
-                        neg_name = neg_data.get('name')
-                        if neg_id and neg_name:
-                            negotiators[str(neg_id)] = neg_name
-            except json.JSONDecodeError:
+                if isinstance(row['payload'], str):
+                    payload = json.loads(row['payload'])
+                elif isinstance(row['payload'], dict):
+                    payload = row['payload']
+                else:
+                    self.logger.warning(f"Payload não é string nem dict: {type(row['payload'])}")
+                    continue
+                # Assuming payload has 'escritorio_responsavel' and 'negociador' fields
+                if 'escritorio_responsavel' in payload:
+                    office_name = payload['escritorio_responsavel']
+                    if isinstance(office_name, str) and office_name.strip():
+                        offices[office_name.strip()] = office_name.strip()
+                else:
+                    self.logger.warning(f"Payload sem 'escritorio_responsavel': {list(payload.keys())}")
+                if 'negociador' in payload:
+                    neg_name = payload['negociador']
+                    if isinstance(neg_name, str) and neg_name.strip():
+                        negotiators[neg_name.strip()] = neg_name.strip()
+                else:
+                    self.logger.warning(f"Payload sem 'negociador': {list(payload.keys())}")
+            except (json.JSONDecodeError, TypeError):
                 self.logger.warning(f"Payload inválido: {row['payload']}")
                 continue
         return offices, negotiators
@@ -78,8 +82,9 @@ class DatabaseUpdater:
         # Update utils/escritorios.json
         offices_file = self.base_dir / 'utils' / 'escritorios.json'
         try:
+            data = {"escritorios": offices, "total": len(offices)}
             with open(offices_file, 'w', encoding='utf-8') as f:
-                json.dump(offices, f, ensure_ascii=False, indent=2)
+                json.dump(data, f, ensure_ascii=False, indent=2)
             self.logger.info(f"Arquivo {offices_file} atualizado com {len(offices)} escritórios.")
         except Exception as e:
             raise DatabaseUpdateError(f"Erro ao salvar escritórios: {e}")
