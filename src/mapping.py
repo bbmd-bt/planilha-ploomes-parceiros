@@ -1,7 +1,7 @@
 # Mapeamento de nomes de negociadores
 NEGOTIATOR_MAPPING = {
-    "rômulo montenegro": "Maria Clara do Amaral Fonseca",
-    "Rômulo Montenegro": "Maria Clara do Amaral Fonseca",
+    "rômulo montenegro": "Maria Clara do Amaral Medeiros",
+    "Rômulo Montenegro": "Maria Clara do Amaral Medeiros",
 }
 
 
