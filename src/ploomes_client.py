@@ -170,13 +170,13 @@ class PloomesClient:
             self.logger.error(f"Erro ao deletar negócio {deal_id}: {e}")
             return False
 
-    def search_deals_by_stage(self, stage_id: int, created_before_date: str = None) -> List[Dict]:
+    def search_deals_by_stage(self, stage_id: int, created_before_datetime: str = None) -> List[Dict]:
         """
         Busca todos os negócios em um estágio específico.
 
         Args:
             stage_id: ID do estágio
-            created_before_date: Data máxima de criação (formato YYYY-MM-DD), opcional
+            created_before_datetime: Data/hora máxima de criação (formato YYYY-MM-DDTHH:MM:SS), opcional
 
         Returns:
             Lista de dicionários representando os negócios encontrados
@@ -188,10 +188,10 @@ class PloomesClient:
             data = response.json()
             deals = data.get("value", [])
 
-            # Filtrar localmente por data se especificado
-            if created_before_date and deals:
+            # Filtrar localmente por data/hora se especificado
+            if created_before_datetime and deals:
                 from datetime import datetime
-                cutoff_date = datetime.strptime(created_before_date, "%Y-%m-%d")
+                cutoff_datetime = datetime.strptime(created_before_datetime, "%Y-%m-%dT%H:%M:%S")
                 filtered_deals = []
 
                 for deal in deals:
@@ -203,7 +203,7 @@ class PloomesClient:
                             # Remove timezone info for comparison
                             created_date = created_date.replace(tzinfo=None)
 
-                            if created_date < cutoff_date:
+                            if created_date < cutoff_datetime:
                                 filtered_deals.append(deal)
                         except (ValueError, AttributeError):
                             # Se falhar ao parsear a data, incluir o deal
@@ -214,7 +214,7 @@ class PloomesClient:
 
                 deals = filtered_deals
 
-            self.logger.info(f"Encontrados {len(deals)} negócios no estágio {stage_id}" + (f" criados antes de {created_before_date}" if created_before_date else ""))
+            self.logger.info(f"Encontrados {len(deals)} negócios no estágio {stage_id}" + (f" criados antes de {created_before_datetime}" if created_before_datetime else ""))
             return deals
         except PloomesAPIError:
             return []

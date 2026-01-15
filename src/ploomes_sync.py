@@ -79,14 +79,14 @@ class PloomesSync:
         report = SyncReport()
         report.total_processed = len(cnj_list)
 
-        # Obter data de hoje no formato YYYY-MM-DD
-        from datetime import datetime
-        today = datetime.now().strftime("%Y-%m-%d")
+        # Obter data/hora de hoje às 17:00 no formato YYYY-MM-DDTHH:MM:SS
+        from datetime import datetime, time
+        today_17h = datetime.combine(datetime.now().date(), time(17, 0, 0)).strftime("%Y-%m-%dT%H:%M:%S")
 
-        self.logger.info(f"Buscando negócios no estágio {self.deletion_stage_id} criados antes de {today}...")
+        self.logger.info(f"Buscando negócios no estágio {self.deletion_stage_id} criados antes de {today_17h}...")
 
         # Buscar todos os negócios antigos no estágio de deleção
-        old_deals = self.client.search_deals_by_stage(self.deletion_stage_id, created_before_date=today)
+        old_deals = self.client.search_deals_by_stage(self.deletion_stage_id, created_before_datetime=today_17h)
 
         if not old_deals:
             self.logger.info("Nenhum negócio antigo encontrado para deletar")
