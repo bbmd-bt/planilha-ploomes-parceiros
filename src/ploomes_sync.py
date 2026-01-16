@@ -54,10 +54,11 @@ class PloomesSync:
         deletion_stage_id: ID do estágio onde a deleção deve ocorrer
     """
 
-    def __init__(self, client: PloomesClient, target_stage_id: int, deletion_stage_id: int):
+    def __init__(self, client: PloomesClient, target_stage_id: int, deletion_stage_id: int, dry_run: bool = False):
         self.client = client
         self.target_stage_id = target_stage_id
         self.deletion_stage_id = deletion_stage_id
+        self.dry_run = dry_run
         self.logger = logging.getLogger(__name__)
 
     def process_cnj_list(self, cnj_list: List[str]) -> SyncReport:
@@ -65,13 +66,12 @@ class PloomesSync:
         Processa uma lista de CNJs seguindo as regras de negócio.
 
         Regras:
-        1. Carregar CNJs do arquivo (esses negócios devem ser preservados)
-        2. Buscar todos os negócios no estágio de deleção criados antes da data atual
-        3. Excluir da deleção os negócios cujos CNJs estão na lista de preservação
-        4. Deletar os negócios restantes
+        1. Carregar CNJs do arquivo (esses negócios devem ser preservados/movidos para target_stage)
+        2. Buscar os negócios correspondentes aos CNJs
+        3. Mover os negócios encontrados para o target_stage
 
         Args:
-            cnj_list: Lista de CNJs a preservar (não deletar)
+            cnj_list: Lista de CNJs a mover para target_stage
 
         Returns:
             Relatório consolidado do processamento
@@ -79,52 +79,67 @@ class PloomesSync:
         report = SyncReport()
         report.total_processed = len(cnj_list)
 
-        # Obter data/hora de hoje às 17:00 no formato YYYY-MM-DDTHH:MM:SS
-        from datetime import datetime, time
-        today_17h = datetime.combine(datetime.now().date(), time(17, 0, 0)).strftime("%Y-%m-%dT%H:%M:%S")
+        moved_count = 0
+        failed_moves = 0
 
-        self.logger.info(f"Buscando negócios no estágio {self.deletion_stage_id} criados antes de {today_17h}...")
+        for cnj in cnj_list:
+            self.logger.info(f"Processando CNJ: {cnj}")
+            try:
+                # Buscar negócio por CNJ
+                deals = self.client.search_deals_by_cnj(cnj)
 
-        # Buscar todos os negócios antigos no estágio de deleção
-        old_deals = self.client.search_deals_by_stage(self.deletion_stage_id, created_before_datetime=today_17h)
+                if not deals:
+                    self.logger.warning(f"CNJ {cnj}: negócio não encontrado")
+                    continue
 
-        if not old_deals:
-            self.logger.info("Nenhum negócio antigo encontrado para deletar")
-            report.successfully_deleted = 0
-            report.skipped_deletions = 0
-            return report
+                # Filtrar apenas negócios no estágio de deleção
+                deletion_stage_deals = [d for d in deals if str(d.get("StageId")) == str(self.deletion_stage_id)]
 
-        self.logger.info(f"Encontrados {len(old_deals)} negócios antigos no estágio {self.target_stage_id}")
+                if not deletion_stage_deals:
+                    self.logger.info(f"CNJ {cnj}: nenhum negócio encontrado no estágio de deleção ({self.deletion_stage_id}), pulando")
+                    continue
 
-        # Filtrar negócios cujos CNJs estão na lista de preservação
-        deals_to_delete = []
-        cnj_set = set(cnj_list)
+                if len(deletion_stage_deals) == 1:
+                    deal = deletion_stage_deals[0]
+                else:
+                    deal = deletion_stage_deals[0]
+                    self.logger.warning(f"CNJ {cnj}: múltiplos negócios no estágio de deleção ({len(deletion_stage_deals)}), usando o primeiro (ID: {deal.get('Id')})")
 
-        for deal in old_deals:
-            # Extrair CNJ do deal (assumindo que está em OtherProperties)
-            cnj = self._extract_cnj_from_deal(deal)
-            if cnj and cnj in cnj_set:
-                self.logger.info(f"Preservando negócio {deal.get('Id')} com CNJ {cnj}")
-                continue
-            deals_to_delete.append(deal)
+                deal_id = deal.get("Id")
+                current_stage = deal.get("StageId")
 
-        self.logger.info(f"{len(deals_to_delete)} negócios serão deletados")
+                if not deal_id:
+                    self.logger.error(f"CNJ {cnj}: ID do negócio não encontrado")
+                    failed_moves += 1
+                    continue
 
-        # Deletar os negócios filtrados
-        deleted_count = 0
-        skipped_count = 0
+                self.logger.info(f"CNJ {cnj}: negócio encontrado no estágio de deleção (ID: {deal_id}, Stage: {current_stage})")
 
-        for deal in deals_to_delete:
-            deal_id = deal.get("Id")
-            if deal_id and self.client.delete_deal(deal_id):
-                deleted_count += 1
-            else:
-                skipped_count += 1
+                # Mover para o target_stage se não estiver já lá
+                if str(current_stage) == str(self.target_stage_id):
+                    self.logger.info(f"CNJ {cnj}: negócio {deal_id} já está no target_stage")
+                    moved_count += 1  # Consider as moved
+                else:
+                    if self.dry_run:
+                        self.logger.info(f"[DRY-RUN] CNJ {cnj}: negócio {deal_id} seria movido para target_stage {self.target_stage_id}")
+                        moved_count += 1  # In dry-run, assume success
+                    elif self.client.update_deal_stage(deal_id, self.target_stage_id):
+                        moved_count += 1
+                        self.logger.info(f"CNJ {cnj}: negócio {deal_id} movido para target_stage {self.target_stage_id}")
+                    else:
+                        failed_moves += 1
+                        self.logger.error(f"CNJ {cnj}: falha ao mover negócio {deal_id}")
 
-        report.successfully_deleted = deleted_count
-        report.skipped_deletions = skipped_count
+            except Exception as e:
+                failed_moves += 1
+                self.logger.error(f"CNJ {cnj}: erro inesperado - {e}")
 
-        self.logger.info(f"Processamento concluído: {deleted_count} deletados, {skipped_count} pulados")
+        report.successfully_moved = moved_count
+        report.failed_movements = failed_moves
+        report.successfully_deleted = 0
+        report.skipped_deletions = 0
+
+        self.logger.info(f"Processamento concluído: {moved_count} movidos, {failed_moves} falhas")
         return report
 
     def _extract_cnj_from_deal(self, deal: Dict) -> Optional[str]:

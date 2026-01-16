@@ -197,7 +197,8 @@ python src/delete_deals.py \\
         sync = PloomesSync(
             client=client,
             target_stage_id=pipeline_config["target_stage_id"],
-            deletion_stage_id=pipeline_config["deletion_stage_id"]
+            deletion_stage_id=pipeline_config["deletion_stage_id"],
+            dry_run=args.dry_run
         )
 
         # Processa CNJs
