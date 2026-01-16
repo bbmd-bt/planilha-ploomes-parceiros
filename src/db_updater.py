@@ -146,10 +146,21 @@ class DatabaseUpdater:
         # Update utils/negociadores.json
         neg_file = self.base_dir / "utils" / "negociadores.json"
         try:
+            # Load existing mappings to preserve custom ones
+            existing_negotiators = {}
+            if neg_file.exists():
+                with open(neg_file, "r", encoding="utf-8") as f:
+                    existing_negotiators = json.load(f)
+
+            # Add new negotiators from DB if not already present
+            for neg in negotiators:
+                if neg not in existing_negotiators:
+                    existing_negotiators[neg] = neg
+
             with open(neg_file, "w", encoding="utf-8") as f:
-                json.dump(negotiators, f, ensure_ascii=False, indent=2)
+                json.dump(existing_negotiators, f, ensure_ascii=False, indent=2)
             logger.info(
-                f"Arquivo {neg_file} atualizado com {len(negotiators)} negociadores."
+                f"Arquivo {neg_file} atualizado com {len(existing_negotiators)} negociadores."
             )
         except Exception as e:
             logger.error(f"Erro ao salvar negociadores: {e}")
