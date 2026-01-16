@@ -4,6 +4,7 @@ from psycopg2.extras import RealDictCursor
 import json
 from pathlib import Path
 import time
+import re
 
 from loguru import logger
 from dotenv import load_dotenv
@@ -13,15 +14,30 @@ class DatabaseUpdateError(Exception):
     pass
 
 
+def sanitize_string(value):
+    """Sanitize string to prevent injection or malicious inputs."""
+    if not isinstance(value, str):
+        return ""
+    # Allow only alphanumeric, spaces, hyphens, and underscores
+    return re.sub(r"[^a-zA-Z0-9\s\-_]", "", value).strip()
+
+
 class DatabaseUpdater:
     def __init__(self):
         load_dotenv()
+        required_env_vars = ["DB_HOST", "DB_NAME", "DB_USER", "DB_PASSWORD"]
+        for var in required_env_vars:
+            value = os.getenv(var)
+            if not value or not value.strip():
+                raise ValueError(f"Environment variable {var} is not set or empty.")
         self.db_config = {
             "host": os.getenv("DB_HOST"),
             "port": os.getenv("DB_PORT", "5432"),
             "database": os.getenv("DB_NAME"),
             "user": os.getenv("DB_USER"),
             "password": os.getenv("DB_PASSWORD"),
+            "sslmode": "require",  # Enforce SSL for secure connections
+            "connect_timeout": 10,  # Timeout to prevent hanging connections
         }
         self.base_dir = Path(__file__).parent.parent
 
@@ -82,16 +98,20 @@ class DatabaseUpdater:
                 if "escritorio_responsavel" in payload:
                     office_name = payload["escritorio_responsavel"]
                     if isinstance(office_name, str) and office_name.strip():
-                        offices.add(office_name.strip())
-                        has_office = True
+                        sanitized_office = sanitize_string(office_name)
+                        if sanitized_office:
+                            offices.add(sanitized_office)
+                            has_office = True
                 if not has_office:
                     skipped_missing_office += 1
                 has_negotiator = False
                 if "negociador" in payload:
                     neg_name = payload["negociador"]
                     if isinstance(neg_name, str) and neg_name.strip():
-                        negotiators.add(neg_name.strip())
-                        has_negotiator = True
+                        sanitized_neg = sanitize_string(neg_name)
+                        if sanitized_neg:
+                            negotiators.add(sanitized_neg)
+                            has_negotiator = True
                 if not has_negotiator:
                     skipped_missing_negotiator += 1
                 processed += 1
@@ -141,49 +161,50 @@ class DatabaseUpdater:
         conn = None
         try:
             conn = self.connect()
-            all_offices = set()
-            all_negotiators = set()
-            total_processed = 0
-            total_skipped_invalid_type = 0
-            total_skipped_missing_office = 0
-            total_skipped_missing_negotiator = 0
-            total_skipped_json_error = 0
-            for batch in self.fetch_data(conn):
-                (
-                    offices,
-                    negotiators,
-                    processed,
-                    skipped_invalid_type,
-                    skipped_missing_office,
-                    skipped_missing_negotiator,
-                    skipped_json_error,
-                ) = self.parse_payloads_batch(batch)
-                all_offices.update(offices)
-                all_negotiators.update(negotiators)
-                total_processed += processed
-                total_skipped_invalid_type += skipped_invalid_type
-                total_skipped_missing_office += skipped_missing_office
-                total_skipped_missing_negotiator += skipped_missing_negotiator
-                total_skipped_json_error += skipped_json_error
-            total_skipped = (
-                total_skipped_invalid_type
-                + total_skipped_missing_office
-                + total_skipped_missing_negotiator
-                + total_skipped_json_error
-            )
-            logger.info(
-                f"Parsing total concluído: {total_processed} processados, {total_skipped} pulados "
-                f"(tipo inválido: {total_skipped_invalid_type}, sem escritório: {total_skipped_missing_office}, "
-                f"sem negociador: {total_skipped_missing_negotiator}, erro JSON: {total_skipped_json_error}). "
-                f"Escritórios únicos: {len(all_offices)}, Negociadores únicos: {len(all_negotiators)}."
-            )
-            self.update_json_files(
-                {k: k for k in all_offices}, {k: k for k in all_negotiators}
-            )
-            elapsed = time.time() - start_time
-            logger.info(
-                f"Atualização do banco de dados concluída com sucesso em {elapsed:.2f} segundos."
-            )
+            with conn:  # Use context manager for connection
+                all_offices = set()
+                all_negotiators = set()
+                total_processed = 0
+                total_skipped_invalid_type = 0
+                total_skipped_missing_office = 0
+                total_skipped_missing_negotiator = 0
+                total_skipped_json_error = 0
+                for batch in self.fetch_data(conn):
+                    (
+                        offices,
+                        negotiators,
+                        processed,
+                        skipped_invalid_type,
+                        skipped_missing_office,
+                        skipped_missing_negotiator,
+                        skipped_json_error,
+                    ) = self.parse_payloads_batch(batch)
+                    all_offices.update(offices)
+                    all_negotiators.update(negotiators)
+                    total_processed += processed
+                    total_skipped_invalid_type += skipped_invalid_type
+                    total_skipped_missing_office += skipped_missing_office
+                    total_skipped_missing_negotiator += skipped_missing_negotiator
+                    total_skipped_json_error += skipped_json_error
+                total_skipped = (
+                    total_skipped_invalid_type
+                    + total_skipped_missing_office
+                    + total_skipped_missing_negotiator
+                    + total_skipped_json_error
+                )
+                logger.info(
+                    f"Parsing total concluído: {total_processed} processados, {total_skipped} pulados "
+                    f"(tipo inválido: {total_skipped_invalid_type}, sem escritório: {total_skipped_missing_office}, "
+                    f"sem negociador: {total_skipped_missing_negotiator}, erro JSON: {total_skipped_json_error}). "
+                    f"Escritórios únicos: {len(all_offices)}, Negociadores únicos: {len(all_negotiators)}."
+                )
+                self.update_json_files(
+                    {k: k for k in all_offices}, {k: k for k in all_negotiators}
+                )
+                elapsed = time.time() - start_time
+                logger.info(
+                    f"Atualização do banco de dados concluída com sucesso em {elapsed:.2f} segundos."
+                )
         except DatabaseUpdateError:
             raise
         except Exception as e:
