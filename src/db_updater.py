@@ -178,7 +178,7 @@ class DatabaseUpdater:
                 f"Escritórios únicos: {len(all_offices)}, Negociadores únicos: {len(all_negotiators)}."
             )
             self.update_json_files(
-                dict.fromkeys(all_offices), dict.fromkeys(all_negotiators)
+                {k: k for k in all_offices}, {k: k for k in all_negotiators}
             )
             elapsed = time.time() - start_time
             logger.info(
