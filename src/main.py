@@ -1,11 +1,10 @@
 import argparse
-import logging
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import List
 
 import pandas as pd
+from loguru import logger
 
 # Adiciona o diretório src ao path para imports
 sys.path.insert(0, str(Path(__file__).parent))
@@ -51,24 +50,37 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    # Configure logging
-    log_level = getattr(logging, args.log_level.upper(), logging.INFO)
-    handlers: List[logging.Handler] = [logging.StreamHandler(sys.stdout)]
+    # Configure loguru
+    logger.remove()  # Remove default handler
+    log_level = args.log_level.upper()
     if args.log:
-        handlers.append(logging.FileHandler(args.log))
+        logger.add(
+            args.log,
+            level=log_level,
+            serialize=True,
+            format="{time} | {level} | {name}:{function}:{line} | {message}",
+        )
     elif (base_dir / "logs").exists():
         log_file = (
             base_dir
             / "logs"
             / f"processamento_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
         )
-        handlers.append(logging.FileHandler(log_file))
-    logging.basicConfig(
+        logger.add(
+            log_file,
+            level=log_level,
+            serialize=True,
+            format="{time} | {level} | {name}:{function}:{line} | {message}",
+        )
+    logger.add(
+        sys.stdout,
         level=log_level,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-        handlers=handlers,
+        colorize=True,
+        format=(
+            "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | "
+            "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
+        ),
     )
-    logger = logging.getLogger(__name__)
 
     # Atualiza banco de dados se solicitado
     if args.update_db:
