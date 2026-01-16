@@ -35,29 +35,39 @@ class DatabaseUpdater:
             logger.error(f"Erro ao conectar ao banco de dados: {e}")
             raise DatabaseUpdateError(f"Erro ao conectar ao banco de dados: {e}")
 
-    def fetch_data(self, conn):
-        logger.debug("Executando query para recuperar dados do lead_snapshot.")
-        query = """
-        SELECT payload
-        FROM lead_snapshot
-        WHERE payload IS NOT NULL
-        """
-        try:
-            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                cursor.execute(query)
-                rows = cursor.fetchall()
-            logger.info(f"Recuperados {len(rows)} registros do banco de dados.")
-            return rows
-        except Exception as e:
-            logger.error(f"Erro ao executar query: {e}")
-            raise DatabaseUpdateError(f"Erro ao executar query: {e}")
+    def fetch_data(self, conn, batch_size=1000):
+        logger.debug("Executando query para recuperar dados do lead_snapshot em lotes.")
+        offset = 0
+        total_rows = 0
+        while True:
+            query = """
+            SELECT payload
+            FROM lead_snapshot
+            WHERE payload IS NOT NULL
+            LIMIT %s OFFSET %s
+            """
+            try:
+                with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                    cursor.execute(query, (batch_size, offset))
+                    rows = cursor.fetchall()
+                if not rows:
+                    break
+                total_rows += len(rows)
+                yield rows
+                offset += batch_size
+            except Exception as e:
+                logger.error(f"Erro ao executar query em lote: {e}")
+                raise DatabaseUpdateError(f"Erro ao executar query: {e}")
+        logger.info(f"Recuperados {total_rows} registros do banco de dados.")
 
-    def parse_payloads(self, rows):
-        logger.debug(f"Iniciando parsing de {len(rows)} payloads.")
-        offices = {}
-        negotiators = {}
+    def parse_payloads_batch(self, rows):
+        offices = set()
+        negotiators = set()
         processed = 0
-        skipped = 0
+        skipped_invalid_type = 0
+        skipped_missing_office = 0
+        skipped_missing_negotiator = 0
+        skipped_json_error = 0
         for row in rows:
             try:
                 if isinstance(row["payload"], str):
@@ -65,42 +75,38 @@ class DatabaseUpdater:
                 elif isinstance(row["payload"], dict):
                     payload = row["payload"]
                 else:
-                    logger.warning(
-                        f"Payload não é string nem dict: {type(row['payload'])}"
-                    )
-                    skipped += 1
+                    skipped_invalid_type += 1
                     continue
                 # Assuming payload has 'escritorio_responsavel' and 'negociador' fields
+                has_office = False
                 if "escritorio_responsavel" in payload:
                     office_name = payload["escritorio_responsavel"]
                     if isinstance(office_name, str) and office_name.strip():
-                        offices[office_name.strip()] = office_name.strip()
-                else:
-                    logger.warning(
-                        f"Payload sem 'escritorio_responsavel': {list(payload.keys())}"
-                    )
-                    skipped += 1
+                        offices.add(office_name.strip())
+                        has_office = True
+                if not has_office:
+                    skipped_missing_office += 1
+                has_negotiator = False
                 if "negociador" in payload:
                     neg_name = payload["negociador"]
                     if isinstance(neg_name, str) and neg_name.strip():
-                        negotiators[neg_name.strip()] = neg_name.strip()
-                else:
-                    logger.warning(f"Payload sem 'negociador': {list(payload.keys())}")
-                    skipped += 1
+                        negotiators.add(neg_name.strip())
+                        has_negotiator = True
+                if not has_negotiator:
+                    skipped_missing_negotiator += 1
                 processed += 1
-            except (json.JSONDecodeError, TypeError) as e:
-                payload_preview = (
-                    str(row["payload"])[:50] + "..."
-                    if len(str(row["payload"])) > 50
-                    else str(row["payload"])
-                )
-                logger.warning(f"Payload inválido: {payload_preview} - Erro: {e}")
-                skipped += 1
+            except (json.JSONDecodeError, TypeError):
+                skipped_json_error += 1
                 continue
-        logger.info(
-            f"Parsing concluído: {processed} processados, {skipped} pulados. Escritórios: {len(offices)}, Negociadores: {len(negotiators)}."
+        return (
+            offices,
+            negotiators,
+            processed,
+            skipped_invalid_type,
+            skipped_missing_office,
+            skipped_missing_negotiator,
+            skipped_json_error,
         )
-        return offices, negotiators
 
     def update_json_files(self, offices, negotiators):
         logger.debug("Iniciando atualização dos arquivos JSON.")
@@ -135,9 +141,45 @@ class DatabaseUpdater:
         conn = None
         try:
             conn = self.connect()
-            rows = self.fetch_data(conn)
-            offices, negotiators = self.parse_payloads(rows)
-            self.update_json_files(offices, negotiators)
+            all_offices = set()
+            all_negotiators = set()
+            total_processed = 0
+            total_skipped_invalid_type = 0
+            total_skipped_missing_office = 0
+            total_skipped_missing_negotiator = 0
+            total_skipped_json_error = 0
+            for batch in self.fetch_data(conn):
+                (
+                    offices,
+                    negotiators,
+                    processed,
+                    skipped_invalid_type,
+                    skipped_missing_office,
+                    skipped_missing_negotiator,
+                    skipped_json_error,
+                ) = self.parse_payloads_batch(batch)
+                all_offices.update(offices)
+                all_negotiators.update(negotiators)
+                total_processed += processed
+                total_skipped_invalid_type += skipped_invalid_type
+                total_skipped_missing_office += skipped_missing_office
+                total_skipped_missing_negotiator += skipped_missing_negotiator
+                total_skipped_json_error += skipped_json_error
+            total_skipped = (
+                total_skipped_invalid_type
+                + total_skipped_missing_office
+                + total_skipped_missing_negotiator
+                + total_skipped_json_error
+            )
+            logger.info(
+                f"Parsing total concluído: {total_processed} processados, {total_skipped} pulados "
+                f"(tipo inválido: {total_skipped_invalid_type}, sem escritório: {total_skipped_missing_office}, "
+                f"sem negociador: {total_skipped_missing_negotiator}, erro JSON: {total_skipped_json_error}). "
+                f"Escritórios únicos: {len(all_offices)}, Negociadores únicos: {len(all_negotiators)}."
+            )
+            self.update_json_files(
+                dict.fromkeys(all_offices), dict.fromkeys(all_negotiators)
+            )
             elapsed = time.time() - start_time
             logger.info(
                 f"Atualização do banco de dados concluída com sucesso em {elapsed:.2f} segundos."
