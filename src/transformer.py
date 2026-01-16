@@ -16,63 +16,89 @@ class PlanilhaTransformer:
         self.errors = []
 
     def transform(self, input_df: pd.DataFrame) -> pd.DataFrame:
-        output_rows = []
-        for idx, row in input_df.iterrows():
-            # CNJ
-            cnj_raw = row.get("CNJ", "")
-            cnj = normalize_cnj(cnj_raw)
-            if not cnj:
+        # Usar operações vetorizadas para melhor performance
+        output_data = {}
+
+        # CNJ
+        cnj_series = (
+            input_df.get("CNJ", pd.Series(dtype=str)).fillna("").apply(normalize_cnj)
+        )
+        invalid_cnj_mask = cnj_series.isna() | (cnj_series == "")
+        cnj_raw_series = input_df.get("CNJ", pd.Series(dtype=str)).fillna("")
+        for idx in invalid_cnj_mask[invalid_cnj_mask].index:
+            cnj_raw = cnj_raw_series.iloc[idx]
+            if cnj_raw:
                 self.errors.append(
                     f"Linha {idx}: CNJ inválido - Valor original: '{cnj_raw}'"
                 )
-                cnj = ""
-            # Nome do Lead
-            nome_lead = row.get("Nome do Cliente", "")
-            # Produto
-            produto = normalize_produto(row.get("Produto", ""))
-            # Negociador
-            negociador = map_negotiator(row.get("Responsável", ""))
-            # E-mail
-            email_raw = extract_first_value(row.get("E-mail do Cliente", ""))
-            email = normalize_email(email_raw)
-            # Telefone
-            tel_raw = extract_first_value(row.get("Telefones do Cliente", ""))
-            telefone = normalize_phone(tel_raw)
-            if tel_raw and not telefone:
-                self.errors.append(
-                    f"Linha {idx}: Telefone inválido - Valor original: '{tel_raw}'"
-                )
-                telefone = ""
-            # Escritório
-            escritorio_raw = row.get("Escritório", "")
-            escritorio, original_escritorio = normalize_escritorio(escritorio_raw)
-            if original_escritorio:
-                # Se foi feito fuzzy match via Levenshtein
+        output_data["CNJ"] = cnj_series.fillna("")
+
+        # Nome do Lead
+        output_data["Nome do Lead"] = input_df.get(
+            "Nome do Cliente", pd.Series(dtype=str)
+        ).fillna("")
+
+        # Produto
+        output_data["Produto"] = (
+            input_df.get("Produto", pd.Series(dtype=str))
+            .fillna("")
+            .apply(normalize_produto)
+        )
+
+        # Negociador
+        output_data["Negociador"] = (
+            input_df.get("Responsável", pd.Series(dtype=str))
+            .fillna("")
+            .apply(map_negotiator)
+        )
+
+        # E-mail
+        email_raw_series = (
+            input_df.get("E-mail do Cliente", pd.Series(dtype=str))
+            .fillna("")
+            .apply(extract_first_value)
+        )
+        output_data["E-mail"] = email_raw_series.apply(normalize_email)
+
+        # Telefone
+        tel_raw_series = (
+            input_df.get("Telefones do Cliente", pd.Series(dtype=str))
+            .fillna("")
+            .apply(extract_first_value)
+        )
+        telefone_series = tel_raw_series.apply(normalize_phone)
+        invalid_phone_mask = (
+            telefone_series.isna() & tel_raw_series.notna() & (tel_raw_series != "")
+        )
+        for idx in invalid_phone_mask[invalid_phone_mask].index:
+            tel_raw = tel_raw_series.iloc[idx]
+            self.errors.append(
+                f"Linha {idx}: Telefone inválido - Valor original: '{tel_raw}'"
+            )
+        output_data["Telefone"] = telefone_series.fillna("")
+
+        # Escritório
+        escritorio_raw_series = input_df.get("Escritório", pd.Series(dtype=str)).fillna(
+            ""
+        )
+        escritorio_series, original_series = zip(
+            *escritorio_raw_series.apply(normalize_escritorio)
+        )
+        output_data["Escritório"] = pd.Series(escritorio_series)
+        # Adicionar erros para fuzzy matches
+        for idx, original in enumerate(original_series):
+            if original:
                 self.errors.append(
                     f"Linha {idx}: Escritório corrigido via fuzzy match - "
-                    f"Original: '{original_escritorio}' → Corrigido: '{escritorio}'"
+                    f"Original: '{original}' → Corrigido: '{escritorio_series[idx]}'"
                 )
-            # OAB
-            oab = ""
-            # Teste de Interesse
-            teste_interesse = "Sim"
-            # Recompra
-            recompra = "Não"
-            output_rows.append(
-                {
-                    "CNJ": cnj,
-                    "Nome do Lead": nome_lead,
-                    "Produto": produto,
-                    "Negociador": negociador,
-                    "E-mail": email,
-                    "Telefone": telefone,
-                    "OAB": oab,
-                    "Escritório": escritorio,
-                    "Teste de Interesse": teste_interesse,
-                    "Recompra": recompra,
-                }
-            )
-        return pd.DataFrame(output_rows)
+
+        # Campos fixos
+        output_data["OAB"] = ""
+        output_data["Teste de Interesse"] = "Sim"
+        output_data["Recompra"] = "Não"
+
+        return pd.DataFrame(output_data)
 
     def get_error_report(self) -> str:
         if not self.errors:
