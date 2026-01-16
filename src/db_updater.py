@@ -89,7 +89,11 @@ class DatabaseUpdater:
                     skipped += 1
                 processed += 1
             except (json.JSONDecodeError, TypeError) as e:
-                payload_preview = str(row['payload'])[:50] + "..." if len(str(row['payload'])) > 50 else str(row['payload'])
+                payload_preview = (
+                    str(row["payload"])[:50] + "..."
+                    if len(str(row["payload"])) > 50
+                    else str(row["payload"])
+                )
                 logger.warning(f"Payload inválido: {payload_preview} - Erro: {e}")
                 skipped += 1
                 continue
