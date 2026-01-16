@@ -3,6 +3,7 @@ import logging
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import List
 
 import pandas as pd
 
@@ -13,7 +14,7 @@ from transformer import PlanilhaTransformer
 from db_updater import DatabaseUpdater, DatabaseUpdateError
 
 
-def main():
+def main() -> int:
     # Define o diretório base do projeto (um nível acima de src)
     base_dir = Path(__file__).parent.parent
 
@@ -37,23 +38,35 @@ def main():
         type=Path,
         help="Arquivo de saída (xlsx). Se não informado, será criado automaticamente.",
     )
-    parser.add_argument("--log", default=None, type=Path, help="Arquivo de log de erros")
-    parser.add_argument("--log-level", default="INFO", help="Nível de log (DEBUG, INFO, WARNING, ERROR)")
-    parser.add_argument("--update-db", action="store_true", help="Atualiza mapeamentos de escritórios e negociadores do banco de dados")
+    parser.add_argument(
+        "--log", default=None, type=Path, help="Arquivo de log de erros"
+    )
+    parser.add_argument(
+        "--log-level", default="INFO", help="Nível de log (DEBUG, INFO, WARNING, ERROR)"
+    )
+    parser.add_argument(
+        "--update-db",
+        action="store_true",
+        help="Atualiza mapeamentos de escritórios e negociadores do banco de dados",
+    )
     args = parser.parse_args()
 
     # Configure logging
     log_level = getattr(logging, args.log_level.upper(), logging.INFO)
-    handlers = [logging.StreamHandler(sys.stdout)]
+    handlers: List[logging.Handler] = [logging.StreamHandler(sys.stdout)]
     if args.log:
         handlers.append(logging.FileHandler(args.log))
     elif (base_dir / "logs").exists():
-        log_file = base_dir / "logs" / f"processamento_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+        log_file = (
+            base_dir
+            / "logs"
+            / f"processamento_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+        )
         handlers.append(logging.FileHandler(log_file))
     logging.basicConfig(
         level=log_level,
         format="%(asctime)s - %(levelname)s - %(message)s",
-        handlers=handlers
+        handlers=handlers,
     )
     logger = logging.getLogger(__name__)
 
@@ -81,7 +94,12 @@ def main():
     # Garante que o diretório de saída existe
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    log_path = args.log or base_dir / "logs" / f"processamento_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    log_path = (
+        args.log
+        or base_dir
+        / "logs"
+        / f"processamento_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    )
     if args.log is None and (base_dir / "logs").exists():
         (base_dir / "logs").mkdir(exist_ok=True)
 

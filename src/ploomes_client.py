@@ -6,14 +6,14 @@ incluindo busca de negócios por CNJ, alteração de estágios e deleção.
 """
 
 import logging
-import time
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import requests
 
 
 class PloomesAPIError(Exception):
     """Exceção para erros da API Ploomes."""
+
     pass
 
 
@@ -27,18 +27,25 @@ class PloomesClient:
         timeout: Timeout para requisições HTTP (padrão: 30 segundos)
     """
 
-    def __init__(self, api_token: str, base_url: str = "https://api2.ploomes.com", timeout: int = 30):
+    def __init__(
+        self,
+        api_token: str,
+        base_url: str = "https://api2.ploomes.com",
+        timeout: int = 30,
+    ):
         self.api_token = api_token
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.session = requests.Session()
 
         # Configura headers padrão
-        self.session.headers.update({
-            "User-Key": api_token,
-            "Content-Type": "application/json",
-            "Accept": "application/json"
-        })
+        self.session.headers.update(
+            {
+                "User-Key": api_token,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
+        )
 
         self.logger = logging.getLogger(__name__)
 
@@ -58,7 +65,7 @@ class PloomesClient:
             PloomesAPIError: Se a requisição falhar
         """
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
-        kwargs.setdefault('timeout', self.timeout)
+        kwargs.setdefault("timeout", self.timeout)
 
         try:
             response = self.session.request(method, url, **kwargs)
@@ -125,9 +132,7 @@ class PloomesClient:
         Returns:
             True se a atualização foi bem-sucedida
         """
-        payload = {
-            "StageId": stage_id
-        }
+        payload = {"StageId": stage_id}
 
         try:
             response = self._make_request("PATCH", f"Deals({deal_id})", json=payload)
@@ -142,14 +147,20 @@ class PloomesClient:
                     updated_deal = None
 
             if updated_deal and str(updated_deal.get("StageId")) == str(stage_id):
-                self.logger.info(f"Negócio {deal_id} movido com sucesso para estágio {stage_id}")
+                self.logger.info(
+                    f"Negócio {deal_id} movido com sucesso para estágio {stage_id}"
+                )
                 return True
             else:
-                self.logger.warning(f"PATCH não atualizou o estágio corretamente para negócio {deal_id}")
+                self.logger.warning(
+                    f"PATCH não atualizou o estágio corretamente para negócio {deal_id}"
+                )
                 return False
 
         except PloomesAPIError as e:
-            self.logger.error(f"Erro ao mover negócio {deal_id} para estágio {stage_id}: {e}")
+            self.logger.error(
+                f"Erro ao mover negócio {deal_id} para estágio {stage_id}: {e}"
+            )
             return False
 
     def delete_deal(self, deal_id: int) -> bool:
@@ -170,7 +181,9 @@ class PloomesClient:
             self.logger.error(f"Erro ao deletar negócio {deal_id}: {e}")
             return False
 
-    def search_deals_by_stage(self, stage_id: int, created_before_datetime: str = None) -> List[Dict]:
+    def search_deals_by_stage(
+        self, stage_id: int, created_before_datetime: Optional[str] = None
+    ) -> List[Dict]:
         """
         Busca todos os negócios em um estágio específico.
 
@@ -191,7 +204,10 @@ class PloomesClient:
             # Filtrar localmente por data/hora se especificado
             if created_before_datetime and deals:
                 from datetime import datetime
-                cutoff_datetime = datetime.strptime(created_before_datetime, "%Y-%m-%dT%H:%M:%S")
+
+                cutoff_datetime = datetime.strptime(
+                    created_before_datetime, "%Y-%m-%dT%H:%M:%S"
+                )
                 filtered_deals = []
 
                 for deal in deals:
@@ -199,7 +215,9 @@ class PloomesClient:
                     if created_date_str:
                         try:
                             # Parse ISO format date
-                            created_date = datetime.fromisoformat(created_date_str.replace('Z', '+00:00'))
+                            created_date = datetime.fromisoformat(
+                                created_date_str.replace("Z", "+00:00")
+                            )
                             # Remove timezone info for comparison
                             created_date = created_date.replace(tzinfo=None)
 
@@ -214,7 +232,14 @@ class PloomesClient:
 
                 deals = filtered_deals
 
-            self.logger.info(f"Encontrados {len(deals)} negócios no estágio {stage_id}" + (f" criados antes de {created_before_datetime}" if created_before_datetime else ""))
+            self.logger.info(
+                f"Encontrados {len(deals)} negócios no estágio {stage_id}"
+                + (
+                    f" criados antes de {created_before_datetime}"
+                    if created_before_datetime
+                    else ""
+                )
+            )
             return deals
         except PloomesAPIError:
             return []

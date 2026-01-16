@@ -9,7 +9,6 @@ from normalizers import (
     normalize_phone,
     normalize_produto,
 )
-from validator import is_valid_cnj, is_valid_phone
 
 
 class PlanilhaTransformer:
@@ -23,7 +22,9 @@ class PlanilhaTransformer:
             cnj_raw = row.get("CNJ", "")
             cnj = normalize_cnj(cnj_raw)
             if not cnj:
-                self.errors.append(f"Linha {idx}: CNJ inválido - Valor original: '{cnj_raw}'")
+                self.errors.append(
+                    f"Linha {idx}: CNJ inválido - Valor original: '{cnj_raw}'"
+                )
                 cnj = ""
             # Nome do Lead
             nome_lead = row.get("Nome do Cliente", "")
@@ -38,7 +39,9 @@ class PlanilhaTransformer:
             tel_raw = extract_first_value(row.get("Telefones do Cliente", ""))
             telefone = normalize_phone(tel_raw)
             if tel_raw and not telefone:
-                self.errors.append(f"Linha {idx}: Telefone inválido - Valor original: '{tel_raw}'")
+                self.errors.append(
+                    f"Linha {idx}: Telefone inválido - Valor original: '{tel_raw}'"
+                )
                 telefone = ""
             # Escritório
             escritorio_raw = row.get("Escritório", "")

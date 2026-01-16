@@ -15,8 +15,8 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Optional, List
 
-import pandas as pd
 from dotenv import load_dotenv
 
 # Carregar variáveis de ambiente do arquivo .env
@@ -31,33 +31,29 @@ from src.ploomes_sync import PloomesSync
 
 # Mapeamento de pipelines para estágios
 PIPELINE_CONFIG = {
-    "BT Blue Pipeline": {
-        "target_stage_id": 110351686,
-        "deletion_stage_id": 110351653
-    },
+    "BT Blue Pipeline": {"target_stage_id": 110351686, "deletion_stage_id": 110351653},
     "2B Ativos Pipeline": {
         "target_stage_id": 110351791,
-        "deletion_stage_id": 110351790
+        "deletion_stage_id": 110351790,
     },
-    "BBMD Pipeline": {
-        "target_stage_id": 110351793,
-        "deletion_stage_id": 110351792
-    }
+    "BBMD Pipeline": {"target_stage_id": 110351793, "deletion_stage_id": 110351792},
 }
 
 
-def setup_logging(log_level: str = "INFO", log_file: Path = None) -> logging.Logger:
+def setup_logging(
+    log_level: str = "INFO", log_file: Optional[Path] = None
+) -> logging.Logger:
     """Configura o sistema de logging."""
     numeric_level = getattr(logging, log_level.upper(), logging.INFO)
 
-    handlers = [logging.StreamHandler(sys.stdout)]
+    handlers: List[logging.Handler] = [logging.StreamHandler(sys.stdout)]
     if log_file:
-        handlers.append(logging.FileHandler(log_file, encoding='utf-8'))
+        handlers.append(logging.FileHandler(log_file, encoding="utf-8"))
 
     logging.basicConfig(
         level=numeric_level,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=handlers
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        handlers=handlers,
     )
 
     return logging.getLogger(__name__)
@@ -67,7 +63,9 @@ def validate_pipeline(pipeline_name: str) -> dict:
     """Valida e retorna a configuração do pipeline."""
     if pipeline_name not in PIPELINE_CONFIG:
         available = ", ".join(PIPELINE_CONFIG.keys())
-        raise ValueError(f"Pipeline '{pipeline_name}' não encontrado. Pipelines disponíveis: {available}")
+        raise ValueError(
+            f"Pipeline '{pipeline_name}' não encontrado. Pipelines disponíveis: {available}"
+        )
 
     return PIPELINE_CONFIG[pipeline_name]
 
@@ -93,52 +91,54 @@ python src/delete_deals.py \\
   --pipeline "2B Ativos Pipeline" \\
   --log-level DEBUG \\
   --log "logs/delete_deals.log"
-        """
+        """,
     )
 
     parser.add_argument(
-        "--input", "-i",
+        "--input",
+        "-i",
         required=True,
         type=Path,
-        help="Caminho para o arquivo Excel de entrada com coluna CNJ"
+        help="Caminho para o arquivo Excel de entrada com coluna CNJ",
     )
 
     parser.add_argument(
-        "--api-token", "-t",
+        "--api-token",
+        "-t",
         default=os.getenv("PLOOMES_API_TOKEN"),
-        help="Token de autenticação da API Ploomes (padrão: valor do .env)"
+        help="Token de autenticação da API Ploomes (padrão: valor do .env)",
     )
 
     parser.add_argument(
-        "--pipeline", "-p",
+        "--pipeline",
+        "-p",
         required=True,
         choices=list(PIPELINE_CONFIG.keys()),
-        help="Nome do pipeline a ser usado"
+        help="Nome do pipeline a ser usado",
     )
 
     parser.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         type=Path,
-        help="Caminho para o arquivo Excel de relatório de saída (opcional)"
+        help="Caminho para o arquivo Excel de relatório de saída (opcional)",
     )
 
     parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="Nível de log (padrão: INFO)"
+        help="Nível de log (padrão: INFO)",
     )
 
     parser.add_argument(
-        "--log",
-        type=Path,
-        help="Caminho para o arquivo de log (opcional)"
+        "--log", type=Path, help="Caminho para o arquivo de log (opcional)"
     )
 
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Executa em modo de teste (não faz alterações reais)"
+        help="Executa em modo de teste (não faz alterações reais)",
     )
 
     args = parser.parse_args()
@@ -160,7 +160,9 @@ python src/delete_deals.py \\
 
     # Valida token da API
     if not args.api_token:
-        logger.error("Token da API Ploomes não encontrado. Configure a variável PLOOMES_API_TOKEN no arquivo .env ou passe --api-token")
+        logger.error(
+            "Token da API Ploomes não encontrado. Configure a variável PLOOMES_API_TOKEN no arquivo .env ou passe --api-token"
+        )
         sys.exit(1)
 
     # Define caminho de saída padrão
@@ -198,7 +200,7 @@ python src/delete_deals.py \\
             client=client,
             target_stage_id=pipeline_config["target_stage_id"],
             deletion_stage_id=pipeline_config["deletion_stage_id"],
-            dry_run=args.dry_run
+            dry_run=args.dry_run,
         )
 
         # Processa CNJs
@@ -220,9 +222,13 @@ python src/delete_deals.py \\
 
         # Verifica se houve erros críticos
         if report.failed_movements > 0:
-            logger.warning(f"Houve {report.failed_movements} falhas na movimentação de estágios")
+            logger.warning(
+                f"Houve {report.failed_movements} falhas na movimentação de estágios"
+            )
         if report.skipped_deletions > 0:
-            logger.warning(f"{report.skipped_deletions} deleções foram puladas devido a erros")
+            logger.warning(
+                f"{report.skipped_deletions} deleções foram puladas devido a erros"
+            )
 
         return 0
 
@@ -230,6 +236,7 @@ python src/delete_deals.py \\
         logger.error(f"Erro durante o processamento: {e}")
         if args.log_level.upper() == "DEBUG":
             import traceback
+
             logger.debug(traceback.format_exc())
         sys.exit(1)
 

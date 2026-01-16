@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main, develop ]
 
 jobs:
   test:
@@ -12,14 +12,37 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.11'
+        python-version: '3.12'
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+
     - name: Run tests
       run: |
-        python -m pytest tests/ -v --tb=short
+        python -m pytest tests/ -v --cov=src --cov-report=xml
+
+    - name: Type check with mypy
+      run: |
+        pip install mypy types-requests
+        mypy src/ --ignore-missing-imports
+
+    - name: Lint with flake8
+      run: |
+        pip install flake8
+        flake8 src/ tests/ --max-line-length=88 --extend-ignore=E203,W503
+
+    - name: Format check with black
+      run: |
+        pip install black
+        black --check src/ tests/
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml

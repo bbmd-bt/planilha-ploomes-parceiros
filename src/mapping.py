@@ -4,9 +4,9 @@ from pathlib import Path
 # Carrega mapeamento de negociadores do arquivo JSON
 NEGOTIATOR_MAPPING = {}
 _base_dir = Path(__file__).parent.parent
-_neg_file = _base_dir / 'utils' / 'negociadores.json'
+_neg_file = _base_dir / "utils" / "negociadores.json"
 try:
-    with open(_neg_file, 'r', encoding='utf-8') as f:
+    with open(_neg_file, "r", encoding="utf-8") as f:
         NEGOTIATOR_MAPPING = json.load(f)
 except FileNotFoundError:
     pass  # Usa dicionário vazio se arquivo não encontrado

@@ -40,7 +40,9 @@ def _load_valid_escritorios() -> dict:
         return _ESCRITORIOS_CACHE
 
 
-def _find_best_match(input_name: str, valid_names: list, threshold: float = 0.95) -> Optional[str]:
+def _find_best_match(
+    input_name: str, valid_names: list, threshold: float = 0.95
+) -> Optional[str]:
     """
     Encontra o melhor match usando Levenshtein distance.
 
@@ -56,7 +58,7 @@ def _find_best_match(input_name: str, valid_names: list, threshold: float = 0.95
         return None
 
     best_match = None
-    best_score = 0
+    best_score = 0.0
 
     # Normaliza o nome de entrada para comparação
     input_normalized = input_name.strip().lower()

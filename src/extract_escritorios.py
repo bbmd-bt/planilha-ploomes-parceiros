@@ -37,14 +37,14 @@ def extract_escritorio_from_payload(payload_str: str) -> str:
         data = json.loads(payload_str)
 
         # Extrai o escritório responsável
-        escritorio = data.get('escritorio_responsavel', '')
+        escritorio = data.get("escritorio_responsavel", "")
 
         # Remove espaços extras
-        return escritorio.strip() if escritorio else ''
+        return escritorio.strip() if escritorio else ""
 
     except (json.JSONDecodeError, KeyError, TypeError):
         # Retorna vazio se houver erro no parsing
-        return ''
+        return ""
 
 
 def extract_unique_escritorios(csv_path: str) -> Set[str]:
@@ -60,7 +60,7 @@ def extract_unique_escritorios(csv_path: str) -> Set[str]:
     escritorios = set()
 
     try:
-        with open(csv_path, 'r', encoding='utf-8') as csvfile:
+        with open(csv_path, "r", encoding="utf-8") as csvfile:
             # Detecta automaticamente o delimitador
             sample = csvfile.read(1024)
             csvfile.seek(0)
@@ -70,7 +70,7 @@ def extract_unique_escritorios(csv_path: str) -> Set[str]:
             reader = csv.DictReader(csvfile, delimiter=delimiter)
 
             for row in reader:
-                payload = row.get('payload', '')
+                payload = row.get("payload", "")
                 if payload:
                     escritorio = extract_escritorio_from_payload(payload)
                     if escritorio:  # Só adiciona se não estiver vazio
@@ -100,14 +100,14 @@ def save_escritorios_json(escritorios: Set[str], output_path: str) -> None:
     # Cria estrutura otimizada para mapeamento "de para"
     data = {
         "escritorios": {esc: esc for esc in escritorios_list},  # chave = valor original
-        "total": len(escritorios_list)
+        "total": len(escritorios_list),
     }
 
     # Garante que o diretório existe
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
     # Salva com indentação para legibilidade
-    with open(output_path, 'w', encoding='utf-8') as jsonfile:
+    with open(output_path, "w", encoding="utf-8") as jsonfile:
         json.dump(data, jsonfile, ensure_ascii=False, indent=2)
 
 
@@ -120,19 +120,20 @@ def main():
 Exemplos de uso:
   python src/extract_escritorios.py --input dados.csv
   python src/extract_escritorios.py --input "input/dados_ploomes.csv"
-        """
+        """,
     )
 
     parser.add_argument(
-        '--input', '-i',
-        required=True,
-        help='Caminho para o arquivo CSV de entrada'
+        "--input", "-i", required=True, help="Caminho para o arquivo CSV de entrada"
     )
 
     parser.add_argument(
-        '--output', '-o',
-        default=os.path.join(os.path.dirname(os.path.dirname(__file__)), 'utils', 'escritorios.json'),
-        help='Caminho para o arquivo JSON de saída (padrão: utils/escritorios.json)'
+        "--output",
+        "-o",
+        default=os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "utils", "escritorios.json"
+        ),
+        help="Caminho para o arquivo JSON de saída (padrão: utils/escritorios.json)",
     )
 
     args = parser.parse_args()
@@ -154,7 +155,7 @@ Exemplos de uso:
     # Salva em JSON
     save_escritorios_json(escritorios, args.output)
 
-    print(f"✅ Extração concluída!")
+    print("✅ Extração concluída!")
     print(f"   Escritórios únicos encontrados: {len(escritorios)}")
     print(f"   Arquivo salvo em: {args.output}")
 

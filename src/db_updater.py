@@ -3,7 +3,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import json
 from pathlib import Path
-from typing import Dict, List
+
 import logging
 from dotenv import load_dotenv
 
@@ -16,11 +16,11 @@ class DatabaseUpdater:
     def __init__(self):
         load_dotenv()
         self.db_config = {
-            'host': os.getenv('DB_HOST'),
-            'port': os.getenv('DB_PORT', '5432'),
-            'database': os.getenv('DB_NAME'),
-            'user': os.getenv('DB_USER'),
-            'password': os.getenv('DB_PASSWORD')
+            "host": os.getenv("DB_HOST"),
+            "port": os.getenv("DB_PORT", "5432"),
+            "database": os.getenv("DB_NAME"),
+            "user": os.getenv("DB_USER"),
+            "password": os.getenv("DB_PASSWORD"),
         }
         self.base_dir = Path(__file__).parent.parent
         self.logger = logging.getLogger(__name__)
@@ -53,26 +53,32 @@ class DatabaseUpdater:
         negotiators = {}
         for row in rows:
             try:
-                if isinstance(row['payload'], str):
-                    payload = json.loads(row['payload'])
-                elif isinstance(row['payload'], dict):
-                    payload = row['payload']
+                if isinstance(row["payload"], str):
+                    payload = json.loads(row["payload"])
+                elif isinstance(row["payload"], dict):
+                    payload = row["payload"]
                 else:
-                    self.logger.warning(f"Payload não é string nem dict: {type(row['payload'])}")
+                    self.logger.warning(
+                        f"Payload não é string nem dict: {type(row['payload'])}"
+                    )
                     continue
                 # Assuming payload has 'escritorio_responsavel' and 'negociador' fields
-                if 'escritorio_responsavel' in payload:
-                    office_name = payload['escritorio_responsavel']
+                if "escritorio_responsavel" in payload:
+                    office_name = payload["escritorio_responsavel"]
                     if isinstance(office_name, str) and office_name.strip():
                         offices[office_name.strip()] = office_name.strip()
                 else:
-                    self.logger.warning(f"Payload sem 'escritorio_responsavel': {list(payload.keys())}")
-                if 'negociador' in payload:
-                    neg_name = payload['negociador']
+                    self.logger.warning(
+                        f"Payload sem 'escritorio_responsavel': {list(payload.keys())}"
+                    )
+                if "negociador" in payload:
+                    neg_name = payload["negociador"]
                     if isinstance(neg_name, str) and neg_name.strip():
                         negotiators[neg_name.strip()] = neg_name.strip()
                 else:
-                    self.logger.warning(f"Payload sem 'negociador': {list(payload.keys())}")
+                    self.logger.warning(
+                        f"Payload sem 'negociador': {list(payload.keys())}"
+                    )
             except (json.JSONDecodeError, TypeError):
                 self.logger.warning(f"Payload inválido: {row['payload']}")
                 continue
@@ -80,21 +86,25 @@ class DatabaseUpdater:
 
     def update_json_files(self, offices, negotiators):
         # Update utils/escritorios.json
-        offices_file = self.base_dir / 'utils' / 'escritorios.json'
+        offices_file = self.base_dir / "utils" / "escritorios.json"
         try:
             data = {"escritorios": offices, "total": len(offices)}
-            with open(offices_file, 'w', encoding='utf-8') as f:
+            with open(offices_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
-            self.logger.info(f"Arquivo {offices_file} atualizado com {len(offices)} escritórios.")
+            self.logger.info(
+                f"Arquivo {offices_file} atualizado com {len(offices)} escritórios."
+            )
         except Exception as e:
             raise DatabaseUpdateError(f"Erro ao salvar escritórios: {e}")
 
         # Update utils/negociadores.json
-        neg_file = self.base_dir / 'utils' / 'negociadores.json'
+        neg_file = self.base_dir / "utils" / "negociadores.json"
         try:
-            with open(neg_file, 'w', encoding='utf-8') as f:
+            with open(neg_file, "w", encoding="utf-8") as f:
                 json.dump(negotiators, f, ensure_ascii=False, indent=2)
-            self.logger.info(f"Arquivo {neg_file} atualizado com {len(negotiators)} negociadores.")
+            self.logger.info(
+                f"Arquivo {neg_file} atualizado com {len(negotiators)} negociadores."
+            )
         except Exception as e:
             raise DatabaseUpdateError(f"Erro ao salvar negociadores: {e}")
 
