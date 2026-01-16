@@ -6,11 +6,11 @@ from pathlib import Path
 import pandas as pd
 from loguru import logger
 
-# Adiciona o diretório src ao path para imports
-sys.path.insert(0, str(Path(__file__).parent))
-
 from transformer import PlanilhaTransformer
 from db_updater import DatabaseUpdater, DatabaseUpdateError
+
+# Adiciona o diretório src ao path para imports
+sys.path.insert(0, str(Path(__file__).parent))
 
 
 def main() -> int:
@@ -57,7 +57,6 @@ def main() -> int:
         logger.add(
             args.log,
             level=log_level,
-            serialize=True,
             format="{time} | {level} | {name}:{function}:{line} | {message}",
         )
     elif (base_dir / "logs").exists():
@@ -69,7 +68,6 @@ def main() -> int:
         logger.add(
             log_file,
             level=log_level,
-            serialize=True,
             format="{time} | {level} | {name}:{function}:{line} | {message}",
         )
     logger.add(

@@ -73,11 +73,8 @@ class TestPloomesClient:
         assert args[0][0] == "PATCH"
         assert "Deals(123)" in args[0][1]
 
-    @patch("ploomes_client.time.sleep")
     @patch("ploomes_client.requests.Session.request")
-    def test_update_deal_stage_success_value_wrapper(
-        self, mock_request, mock_sleep, client
-    ):
+    def test_update_deal_stage_success_value_wrapper(self, mock_request, client):
         """Testa atualização de estágio quando a API retorna o negócio dentro de 'value'."""
         mock_response = Mock()
         mock_response.json.return_value = {"value": [{"Id": 123, "StageId": 999}]}

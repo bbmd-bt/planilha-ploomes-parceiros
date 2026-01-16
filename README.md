@@ -2,6 +2,36 @@
 
 Script Python para transformar planilhas de parceiros no formato padrão do Ploomes.
 
+## Segurança
+
+Este projeto implementa várias medidas de segurança para proteger dados sensíveis e prevenir vulnerabilidades:
+
+### Configuração Segura
+- **Variáveis de Ambiente**: Tokens de API e credenciais são armazenados em arquivo `.env` (não versionado)
+- **HTTPS**: Todas as comunicações com APIs externas usam HTTPS
+- **Validação de Entrada**: Parâmetros de entrada são validados para prevenir injeções
+
+### Verificações Automáticas
+- **Análise de Segurança**: Uso do Bandit para detectar vulnerabilidades no código
+- **Verificação de Dependências**: Uso do Safety para identificar vulnerabilidades em bibliotecas
+- **Pre-commit Hooks**: Verificações automáticas antes de commits
+
+### Como Executar Verificações de Segurança
+
+```bash
+# Executar verificações de segurança
+python security_check.py
+
+# Ou instalar e usar pre-commit
+pip install pre-commit
+pre-commit install
+pre-commit run --all-files
+```
+
+### Logs Seguros
+- Logs não serializam dados que possam conter informações sensíveis
+- Erros de API não expõem URLs completas ou tokens nos logs
+
 ## Estrutura do Projeto
 
 ```

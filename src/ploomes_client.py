@@ -71,9 +71,11 @@ class PloomesClient:
             response = self.session.request(method, url, **kwargs)
             response.raise_for_status()
             return response
-        except requests.exceptions.RequestException as e:
-            self.logger.error(f"Erro na requisição {method} {url}: {e}")
-            raise PloomesAPIError(f"Falha na requisição: {e}")
+        except requests.exceptions.RequestException:
+            # Log detalhado para debug, mas sem expor informações sensíveis
+            self.logger.error(f"Erro na requisição {method} para endpoint: {endpoint}")
+            # Não logar a URL completa ou headers que podem conter tokens
+            raise PloomesAPIError("Falha na requisição para a API Ploomes")
 
     def search_deals_by_cnj(self, cnj: str) -> List[Dict]:
         """
@@ -85,9 +87,21 @@ class PloomesClient:
         Returns:
             Lista de dicionários representando os negócios encontrados
         """
+        # Validação básica do CNJ para prevenir injeções
+        if not cnj or not isinstance(cnj, str):
+            self.logger.warning("CNJ inválido fornecido")
+            return []
+
+        # Sanitiza o CNJ removendo caracteres não numéricos
+        cnj_clean = "".join(filter(str.isdigit, cnj))
+        if len(cnj_clean) != 20:  # CNJ brasileiro tem 20 dígitos
+            self.logger.warning(f"CNJ com formato inválido: {cnj}")
+            return []
 
         # Endpoint para buscar negócios com filtro por CNJ
-        endpoint = f"Deals?$filter=OtherProperties/any(op: op/FieldKey eq 'deal_20E8290A-809B-4CF1-9345-6B264AED7830' and op/StringValue eq '{cnj}')"
+        field_key = "deal_20E8290A-809B-4CF1-9345-6B264AED7830"
+        filter_str = f"OtherProperties/any(op: op/FieldKey eq '{field_key}' and op/StringValue eq '{cnj_clean}')"
+        endpoint = f"Deals?$filter={filter_str}"
 
         try:
             response = self._make_request("GET", endpoint)
@@ -106,6 +120,10 @@ class PloomesClient:
         Returns:
             Dicionário com dados do negócio ou None se não encontrado
         """
+        # Validação do deal_id
+        if not isinstance(deal_id, int) or deal_id <= 0:
+            self.logger.warning(f"ID de negócio inválido: {deal_id}")
+            return None
         try:
             response = self._make_request("GET", f"Deals({deal_id})")
             data = response.json()
@@ -132,6 +150,14 @@ class PloomesClient:
         Returns:
             True se a atualização foi bem-sucedida
         """
+        # Validação dos IDs
+        if not isinstance(deal_id, int) or deal_id <= 0:
+            self.logger.warning(f"ID de negócio inválido: {deal_id}")
+            return False
+        if not isinstance(stage_id, int) or stage_id <= 0:
+            self.logger.warning(f"ID de estágio inválido: {stage_id}")
+            return False
+
         payload = {"StageId": stage_id}
 
         try:
@@ -173,6 +199,10 @@ class PloomesClient:
         Returns:
             True se a deleção foi bem-sucedida
         """
+        # Validação do deal_id
+        if not isinstance(deal_id, int) or deal_id <= 0:
+            self.logger.warning(f"ID de negócio inválido: {deal_id}")
+            return False
         try:
             self._make_request("DELETE", f"Deals({deal_id})")
             self.logger.info(f"Negócio {deal_id} deletado com sucesso")
@@ -194,6 +224,10 @@ class PloomesClient:
         Returns:
             Lista de dicionários representando os negócios encontrados
         """
+        # Validação do stage_id
+        if not isinstance(stage_id, int) or stage_id <= 0:
+            self.logger.warning(f"ID de estágio inválido: {stage_id}")
+            return []
         endpoint = f"Deals?$filter=StageId eq {stage_id}"
 
         try:
