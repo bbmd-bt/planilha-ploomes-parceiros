@@ -128,6 +128,30 @@ Este script:
 - Remove duplicatas e registros vazios
 - Salva em `utils/escritorios.json` com formato otimizado para mapeamentos
 
+### Remoção de Negócios Duplicados
+
+Para remover negócios duplicados de um funil específico da Ploomes baseado no CNJ:
+
+```bash
+python src/delete_duplicate_deals.py --pipeline-id <ID_DO_PIPELINE>
+```
+
+Este script:
+
+- Recebe o ID do pipeline como parâmetro
+- Busca todos os negócios no pipeline via API Ploomes
+- Agrupa os negócios por CNJ
+- Para cada conjunto de duplicatas, mantém o negócio mais antigo (baseado na data de criação)
+- Remove os negócios duplicados mais recentes
+- Suporta modo dry-run para simulação sem deletar dados
+
+#### Opções do Comando
+
+- `--pipeline-id`: ID do pipeline a ser processado (obrigatório)
+- `--api-token`: Token da API Ploomes (opcional se definido em `PLOOMES_API_TOKEN`)
+- `--dry-run`: Executa em modo simulação (não deleta nada)
+- `--log-level`: Nível de log (DEBUG, INFO, WARNING, ERROR, padrão: INFO)
+
 ## Atualização de Mapeamentos do Banco de Dados
 
 O script suporta atualização automática de mapeamentos de escritórios e negociadores diretamente do banco de dados PostgreSQL.

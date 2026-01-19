@@ -358,7 +358,7 @@ class PloomesClient:
             try:
                 response = self._make_request(
                     "GET",
-                    f"Deals?$filter=PipelineId eq {pipeline_id}&$top={top}&$skip={skip}",
+                    f"Deals?$filter=PipelineId eq {pipeline_id}&$expand=OtherProperties&$top={top}&$skip={skip}",
                 )
                 data = response.json()
                 page_deals = data.get("value", [])
