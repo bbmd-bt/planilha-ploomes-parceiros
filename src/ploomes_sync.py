@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
+import re
 
 # Adicionar o diretório pai ao sys.path para imports funcionarem
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -125,30 +126,31 @@ class PloomesSync:
                 )
                 for deal in all_deletion_deals:
                     deal_cnj = self._extract_cnj_from_deal(deal)
-                    if deal_cnj and deal_cnj not in cnj_list:
-                        deal_id = deal.get("Id")
-                        if deal_id:
-                            if self.dry_run:
-                                logger.info(
-                                    f"[DRY-RUN] CNJ {deal_cnj}: negócio {deal_id} seria deletado"
-                                )
-                                deleted_count += 1
-                            elif self.client.delete_deal(deal_id):
-                                deleted_count += 1
-                                logger.info(
-                                    f"CNJ {deal_cnj}: negócio {deal_id} deletado"
-                                )
-                            else:
-                                skipped_deletions += 1
-                                logger.error(
-                                    f"CNJ {deal_cnj}: falha ao deletar negócio {deal_id}"
-                                )
-                        else:
-                            skipped_deletions += 1
-                            logger.warning(f"CNJ {deal_cnj}: negócio sem ID encontrado")
-                    elif not deal_cnj:
-                        logger.warning(
-                            f"Negócio {deal.get('Id')} sem CNJ encontrado, pulando"
+                    deal_id = deal.get("Id")
+
+                    # Se o CNJ está na lista de preservação, pula a deleção
+                    if deal_cnj and deal_cnj in cnj_list:
+                        continue
+
+                    if not deal_id:
+                        skipped_deletions += 1
+                        logger.warning("Negócio sem ID encontrado, pulando")
+                        continue
+
+                    cnj_label = deal_cnj if deal_cnj else "sem CNJ"
+
+                    if self.dry_run:
+                        logger.info(
+                            f"[DRY-RUN] CNJ {cnj_label}: negócio {deal_id} seria deletado"
+                        )
+                        deleted_count += 1
+                    elif self.client.delete_deal(deal_id):
+                        deleted_count += 1
+                        logger.info(f"CNJ {cnj_label}: negócio {deal_id} deletado")
+                    else:
+                        skipped_deletions += 1
+                        logger.error(
+                            f"CNJ {cnj_label}: falha ao deletar negócio {deal_id}"
                         )
         except Exception as e:
             logger.error(f"Erro ao deletar negócios no estágio de deleção: {e}")
@@ -193,47 +195,38 @@ class PloomesSync:
                 logger.info(f"CNJ {cnj}: {result.error_message}, pulando")
                 return result
 
-            if len(deletion_stage_deals) == 1:
-                deal = deletion_stage_deals[0]
-            else:
-                deal = deletion_stage_deals[0]
-                logger.warning(
-                    f"CNJ {cnj}: múltiplos negócios no estágio de deleção "
-                    f"({len(deletion_stage_deals)}), usando o primeiro (ID: {deal.get('Id')})"
+            moved_any = False
+            for deal in deletion_stage_deals:
+                deal_id = deal.get("Id")
+                current_stage = deal.get("StageId")
+
+                if not deal_id:
+                    logger.warning(f"CNJ {cnj}: negócio sem ID encontrado, pulando")
+                    continue
+
+                logger.info(
+                    f"CNJ {cnj}: processando negócio no estágio de deleção (ID: {deal_id}, Stage: {current_stage})"
                 )
 
-            deal_id = deal.get("Id")
-            current_stage = deal.get("StageId")
-
-            if not deal_id:
-                result.error_message = "ID do negócio não encontrado"
-                logger.error(f"CNJ {cnj}: {result.error_message}")
-                return result
-
-            result.deal_id = deal_id
-            logger.info(
-                f"CNJ {cnj}: negócio encontrado no estágio de deleção (ID: {deal_id}, Stage: {current_stage})"
-            )
-
-            # Mover para o target_stage se não estiver já lá
-            if str(current_stage) == str(self.target_stage_id):
-                result.moved_successfully = True
-                logger.info(f"CNJ {cnj}: negócio {deal_id} já está no target_stage")
-            else:
-                if self.dry_run:
-                    result.moved_successfully = True
-                    logger.info(
-                        f"[DRY-RUN] CNJ {cnj}: negócio {deal_id} seria movido para "
-                        f"target_stage {self.target_stage_id}"
-                    )
-                elif self.client.update_deal_stage(deal_id, self.target_stage_id):
-                    result.moved_successfully = True
-                    logger.info(
-                        f"CNJ {cnj}: negócio {deal_id} movido para target_stage {self.target_stage_id}"
-                    )
+                # Mover para o target_stage se não estiver já lá
+                if str(current_stage) == str(self.target_stage_id):
+                    logger.info(f"CNJ {cnj}: negócio {deal_id} já está no target_stage")
                 else:
-                    result.error_message = "Falha ao mover negócio"
-                    logger.error(f"CNJ {cnj}: falha ao mover negócio {deal_id}")
+                    if self.dry_run:
+                        logger.info(
+                            f"[DRY-RUN] CNJ {cnj}: negócio {deal_id} seria movido para "
+                            f"target_stage {self.target_stage_id}"
+                        )
+                        moved_any = True
+                    elif self.client.update_deal_stage(deal_id, self.target_stage_id):
+                        logger.info(
+                            f"CNJ {cnj}: negócio {deal_id} movido para target_stage {self.target_stage_id}"
+                        )
+                        moved_any = True
+                    else:
+                        logger.error(f"CNJ {cnj}: falha ao mover negócio {deal_id}")
+
+            result.moved_successfully = moved_any
 
         except Exception as e:
             result.error_message = f"Erro inesperado: {e}"
@@ -254,7 +247,17 @@ class PloomesSync:
         other_properties = deal.get("OtherProperties", [])
         for prop in other_properties:
             if prop.get("FieldKey") == "deal_20E8290A-809B-4CF1-9345-6B264AED7830":
-                return str(prop.get("StringValue", "")).strip()
+                value = str(prop.get("StringValue", "")).strip()
+                if value:
+                    return value
+
+        # Tentativa de extrair CNJ do título, se presente
+        title = str(deal.get("Title", ""))
+        if title:
+            match = re.search(r"\b\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}\b", title)
+            if match:
+                return match.group(0)
+
         return None
 
     def _move_cnj_to_deletion_stage(self, cnj: str) -> ProcessingResult:

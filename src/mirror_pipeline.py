@@ -171,6 +171,10 @@ def mirror_pipeline(client: PloomesClient, pipeline_id: int) -> bool:
         new_deal = deal.copy()
         # Remover ID para criação
         new_deal.pop("Id", None)
+        # Limpar OtherProperties removendo IDs se existirem
+        if "OtherProperties" in new_deal:
+            for prop in new_deal["OtherProperties"]:
+                prop.pop("Id", None)
         # Atualizar PipelineId
         new_deal["PipelineId"] = new_pipeline_id
         # Atualizar StageId se mapeado
@@ -204,7 +208,7 @@ def mirror_pipeline(client: PloomesClient, pipeline_id: int) -> bool:
             )
 
         # Pequena pausa para evitar rate limiting
-        time.sleep(1)
+        time.sleep(0.5)
 
     logging.info(
         f"Clonagem concluída. {success_count}/{len(deals)} negócios replicados com sucesso."

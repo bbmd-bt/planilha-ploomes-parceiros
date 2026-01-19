@@ -6,6 +6,7 @@ incluindo busca de negócios por CNJ, alteração de estágios e deleção.
 """
 
 import logging
+import time
 from typing import Dict, List, Optional
 
 import requests
@@ -49,9 +50,20 @@ class PloomesClient:
 
         self.logger = logging.getLogger(__name__)
 
+        # Rate limiting: 120 requisições por minuto = 1 req a cada 0.5 segundos
+        self.min_request_interval = 0.5
+        self.last_request_time = 0
+
+    def _apply_rate_limit(self):
+        """Aplica rate limiting para respeitar o limite de 120 requisições por minuto."""
+        elapsed = time.time() - self.last_request_time
+        if elapsed < self.min_request_interval:
+            time.sleep(self.min_request_interval - elapsed)
+        self.last_request_time = time.time()
+
     def _make_request(self, method: str, endpoint: str, **kwargs) -> requests.Response:
         """
-        Faz uma requisição HTTP para a API.
+        Faz uma requisição HTTP para a API com retry automático e rate limiting.
 
         Args:
             method: Método HTTP (GET, POST, PATCH, DELETE)
@@ -62,27 +74,60 @@ class PloomesClient:
             Response object
 
         Raises:
-            PloomesAPIError: Se a requisição falhar
+            PloomesAPIError: Se a requisição falhar após retries
         """
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
         kwargs.setdefault("timeout", self.timeout)
 
-        try:
-            response = self.session.request(method, url, **kwargs)
-            response.raise_for_status()
-            return response
-        except requests.exceptions.RequestException as e:
-            # Log detalhado para debug, mas sem expor informações sensíveis
-            self.logger.error(f"Erro na requisição {method} para endpoint: {endpoint}")
-            self.logger.error(
-                f"Status code: {getattr(e.response, 'status_code', 'N/A')}"
-            )
-            if hasattr(e.response, "text") and e.response is not None:
+        max_retries = 3
+        backoff_factor = 1.0
+
+        for attempt in range(max_retries):
+            try:
+                # Aplicar rate limiting antes de cada requisição
+                self._apply_rate_limit()
+
+                response = self.session.request(method, url, **kwargs)
+                response.raise_for_status()
+                return response
+
+            except requests.exceptions.HTTPError as e:
+                status_code = getattr(e.response, "status_code", None)
+
+                # Se for erro 429 (rate limit), retry com backoff
+                if status_code == 429 and attempt < max_retries - 1:
+                    wait_time = backoff_factor * (2**attempt)
+                    self.logger.warning(
+                        f"Rate limit (429) atingido. Aguardando {wait_time:.1f}s "
+                        f"antes de retry {attempt + 1}/{max_retries}..."
+                    )
+                    time.sleep(wait_time)
+                    # Aumentar o intervalo mínimo entre requisições
+                    self.min_request_interval = min(
+                        self.min_request_interval * 1.5, 2.0
+                    )
+                    continue
+
+                # Para outros erros HTTP, falhar imediatamente
                 self.logger.error(
-                    f"Response text: {e.response.text[:500]}"
-                )  # Limit to first 500 chars
-            # Não logar a URL completa ou headers que podem conter tokens
-            raise PloomesAPIError("Falha na requisição para a API Ploomes")
+                    f"Erro na requisição {method} para endpoint: {endpoint}"
+                )
+                self.logger.error(f"Status code: {status_code}")
+                if hasattr(e.response, "text") and e.response is not None:
+                    self.logger.error(f"Response text: {e.response.text[:500]}")
+                raise PloomesAPIError(
+                    f"Falha na requisição para a API Ploomes (HTTP {status_code})"
+                )
+
+            except requests.exceptions.RequestException as e:
+                # Para outros tipos de erro, também falhar
+                self.logger.error(
+                    f"Erro na requisição {method} para endpoint: {endpoint}"
+                )
+                self.logger.error(f"Erro: {str(e)}")
+                raise PloomesAPIError("Falha na requisição para a API Ploomes")
+
+        raise PloomesAPIError("Falha na requisição após múltiplas tentativas")
 
     def search_deals_by_cnj(self, cnj: str) -> List[Dict]:
         """
@@ -170,27 +215,11 @@ class PloomesClient:
         payload = {"StageId": stage_id}
 
         try:
-            response = self._make_request("PATCH", f"Deals({deal_id})", json=payload)
-            updated_deal = response.json()
-
-            # Trata resposta similar ao get_deal_by_id
-            if isinstance(updated_deal, dict) and "value" in updated_deal:
-                items = updated_deal.get("value") or []
-                if items:
-                    updated_deal = items[0]
-                else:
-                    updated_deal = None
-
-            if updated_deal and str(updated_deal.get("StageId")) == str(stage_id):
-                self.logger.info(
-                    f"Negócio {deal_id} movido com sucesso para estágio {stage_id}"
-                )
-                return True
-            else:
-                self.logger.warning(
-                    f"PATCH não atualizou o estágio corretamente para negócio {deal_id}"
-                )
-                return False
+            self._make_request("PATCH", f"Deals({deal_id})", json=payload)
+            self.logger.info(
+                f"Negócio {deal_id} movido com sucesso para estágio {stage_id}"
+            )
+            return True
 
         except PloomesAPIError as e:
             self.logger.error(
@@ -237,7 +266,10 @@ class PloomesClient:
         if not isinstance(stage_id, int) or stage_id <= 0:
             self.logger.warning(f"ID de estágio inválido: {stage_id}")
             return []
-        endpoint = f"Deals?$filter=StageId eq {stage_id}"
+        endpoint = (
+            "Deals?$select=Id,StageId,Title,CreateDate,OtherProperties"
+            f"&$expand=OtherProperties&$filter=StageId eq {stage_id}"
+        )
 
         try:
             response = self._make_request("GET", endpoint)
