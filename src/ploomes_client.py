@@ -71,9 +71,16 @@ class PloomesClient:
             response = self.session.request(method, url, **kwargs)
             response.raise_for_status()
             return response
-        except requests.exceptions.RequestException:
+        except requests.exceptions.RequestException as e:
             # Log detalhado para debug, mas sem expor informações sensíveis
             self.logger.error(f"Erro na requisição {method} para endpoint: {endpoint}")
+            self.logger.error(
+                f"Status code: {getattr(e.response, 'status_code', 'N/A')}"
+            )
+            if hasattr(e.response, "text") and e.response is not None:
+                self.logger.error(
+                    f"Response text: {e.response.text[:500]}"
+                )  # Limit to first 500 chars
             # Não logar a URL completa ou headers que podem conter tokens
             raise PloomesAPIError("Falha na requisição para a API Ploomes")
 
@@ -92,15 +99,17 @@ class PloomesClient:
             self.logger.warning("CNJ inválido fornecido")
             return []
 
-        # Sanitiza o CNJ removendo caracteres não numéricos
-        cnj_clean = "".join(filter(str.isdigit, cnj))
-        if len(cnj_clean) != 20:  # CNJ brasileiro tem 20 dígitos
+        # Normaliza o CNJ para o formato padrão NNNNNNN-DD.AAAA.J.TR.OOOO
+        from src.normalizers import normalize_cnj
+
+        cnj_normalized = normalize_cnj(cnj)
+        if not cnj_normalized:
             self.logger.warning(f"CNJ com formato inválido: {cnj}")
             return []
 
         # Endpoint para buscar negócios com filtro por CNJ
         field_key = "deal_20E8290A-809B-4CF1-9345-6B264AED7830"
-        filter_str = f"OtherProperties/any(op: op/FieldKey eq '{field_key}' and op/StringValue eq '{cnj_clean}')"
+        filter_str = f"OtherProperties/any(op: op/FieldKey eq '{field_key}' and op/StringValue eq '{cnj_normalized}')"
         endpoint = f"Deals?$filter={filter_str}"
 
         try:
@@ -277,3 +286,104 @@ class PloomesClient:
             return deals
         except PloomesAPIError:
             return []
+
+    def get_pipeline(self, pipeline_id: int) -> Optional[Dict]:
+        """
+        Busca um pipeline específico por ID, incluindo estágios.
+
+        Args:
+            pipeline_id: ID do pipeline
+
+        Returns:
+            Dicionário com dados do pipeline ou None se não encontrado
+        """
+        if not isinstance(pipeline_id, int) or pipeline_id <= 0:
+            self.logger.warning(f"ID de pipeline inválido: {pipeline_id}")
+            return None
+        try:
+            response = self._make_request(
+                "GET", f"Deals@Pipelines?$expand=Stages&$filter=Id+eq+{pipeline_id}"
+            )
+            data = response.json()
+            # A API retorna um objeto com "value" contendo a lista
+            if isinstance(data, dict) and "value" in data:
+                items = data.get("value") or []
+                if items:
+                    return items[0]
+                return None
+            return data
+        except PloomesAPIError:
+            return None
+
+    def create_pipeline(self, pipeline_data: Dict) -> Optional[Dict]:
+        """
+        Cria um novo pipeline.
+
+        Args:
+            pipeline_data: Dados do pipeline a ser criado
+
+        Returns:
+            Dicionário com dados do pipeline criado ou None se falhar
+        """
+        try:
+            response = self._make_request("POST", "Deals@Pipelines", json=pipeline_data)
+            data = response.json()
+            # A API pode retornar um objeto direto ou dentro de "value"
+            if isinstance(data, dict) and "value" in data:
+                items = data.get("value") or []
+                if items:
+                    return items[0]
+                return None
+            return data
+        except PloomesAPIError:
+            return None
+
+    def get_deals_by_pipeline(self, pipeline_id: int) -> List[Dict]:
+        """
+        Busca todos os negócios em um pipeline específico.
+
+        Args:
+            pipeline_id: ID do pipeline
+
+        Returns:
+            Lista de dicionários com dados dos negócios
+        """
+        if not isinstance(pipeline_id, int) or pipeline_id <= 0:
+            self.logger.warning(f"ID de pipeline inválido: {pipeline_id}")
+            return []
+        deals = []
+        skip = 0
+        top = 100  # Limite por página
+        while True:
+            try:
+                response = self._make_request(
+                    "GET",
+                    f"Deals?$filter=PipelineId eq {pipeline_id}&$top={top}&$skip={skip}",
+                )
+                data = response.json()
+                page_deals = data.get("value", [])
+                deals.extend(page_deals)
+                if len(page_deals) < top:
+                    break
+                skip += top
+            except PloomesAPIError:
+                break
+        self.logger.info(f"Encontrados {len(deals)} negócios no pipeline {pipeline_id}")
+        return deals
+
+    def create_deal(self, deal_data: Dict) -> Optional[Dict]:
+        """
+        Cria um novo negócio.
+
+        Args:
+            deal_data: Dados do negócio a ser criado
+
+        Returns:
+            Dicionário com dados do negócio criado ou None se falhar
+        """
+        try:
+            response = self._make_request("POST", "Deals", json=deal_data)
+            data = response.json()
+            return data
+        except PloomesAPIError:
+            return None
