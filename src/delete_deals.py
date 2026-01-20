@@ -40,6 +40,15 @@ PIPELINE_CONFIG = {
     "Pipeline de Teste": {"target_stage_id": 110352958, "deletion_stage_id": 110352957},
 }
 
+# Mapeamento de mesas para pipelines de origem e estágios de destino
+ORIGIN_PIPELINE_CONFIG = {
+    "Mesa JPA": {"pipeline_id": 110065217, "stage_id": 110352811},
+    "Mesa 2B": {"pipeline_id": 110066163, "stage_id": 110352813},
+    "Mesa Yasmin": {"pipeline_id": 110066161, "stage_id": 110352810},
+    "Mesa BBMD": {"pipeline_id": 110066162, "stage_id": 110352812},
+    "Mesa Elson": {"pipeline_id": 110066424, "stage_id": 110352814},
+}
+
 
 def setup_logging(
     log_level: str = "INFO", log_file: Optional[Path] = None
@@ -202,6 +211,7 @@ python src/delete_deals.py \\
             client=client,
             target_stage_id=pipeline_config["target_stage_id"],
             deletion_stage_id=pipeline_config["deletion_stage_id"],
+            origin_config=ORIGIN_PIPELINE_CONFIG,
             dry_run=args.dry_run,
         )
 

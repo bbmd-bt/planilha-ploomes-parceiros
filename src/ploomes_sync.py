@@ -59,12 +59,14 @@ class PloomesSync:
         client: PloomesClient,
         target_stage_id: int,
         deletion_stage_id: int,
+        origin_config: Optional[Dict[str, Dict[str, int]]] = None,
         dry_run: bool = False,
         max_workers: int = 1,
     ):
         self.client = client
         self.target_stage_id = target_stage_id
         self.deletion_stage_id = deletion_stage_id
+        self.origin_config = origin_config or {}
         self.dry_run = dry_run
         self.max_workers = max_workers
 
@@ -85,6 +87,8 @@ class PloomesSync:
         """
         report = SyncReport()
         report.total_processed = len(cnj_list)
+
+        self.cnj_list = set(cnj_list)  # Store for later use in deletion
 
         # Usar paralelização para processar CNJs
         results = []
@@ -125,33 +129,64 @@ class PloomesSync:
                     f"Encontrados {len(all_deletion_deals)} negócios no estágio de deleção para verificar deleção"
                 )
                 for deal in all_deletion_deals:
-                    deal_cnj = self._extract_cnj_from_deal(deal)
                     deal_id = deal.get("Id")
-
-                    # Se o CNJ está na lista de preservação, pula a deleção
-                    if deal_cnj and deal_cnj in cnj_list:
-                        continue
 
                     if not deal_id:
                         skipped_deletions += 1
                         logger.warning("Negócio sem ID encontrado, pulando")
                         continue
 
-                    cnj_label = deal_cnj if deal_cnj else "sem CNJ"
+                    # Movimentar o deal de origem antes de deletar
+                    origin_deal_id = self._extract_origin_deal_id_from_deal(deal)
+                    mesa = self._extract_mesa_from_deal(deal)
+
+                    if origin_deal_id and mesa and mesa in self.origin_config:
+                        origin_pipeline = self.origin_config[mesa]
+                        origin_pipeline_id = origin_pipeline["pipeline_id"]
+                        origin_stage_id = origin_pipeline["stage_id"]
+
+                        # Verificar se o deal de origem está no pipeline de origem
+                        origin_deal = self.client.get_deal_by_id(origin_deal_id)
+                        if (
+                            origin_deal
+                            and origin_deal.get("PipelineId") == origin_pipeline_id
+                        ):
+                            if self.dry_run:
+                                logger.info(
+                                    f"[DRY-RUN] Movendo deal de origem {origin_deal_id} "
+                                    f"para estágio {origin_stage_id} no pipeline {origin_pipeline_id}"
+                                )
+                            elif self.client.update_deal_stage(
+                                origin_deal_id, origin_stage_id
+                            ):
+                                logger.info(
+                                    f"Deal de origem {origin_deal_id} movido para estágio {origin_stage_id}"
+                                )
+                            else:
+                                logger.error(
+                                    f"Falha ao mover deal de origem {origin_deal_id}"
+                                )
+
+                    cnj_label = self._extract_cnj_from_deal(deal) or "sem CNJ"
+
+                    # Skip deletion if CNJ is in the preserved list
+                    if cnj_label in self.cnj_list:
+                        logger.info(
+                            f"{cnj_label}: negócio {deal_id} preservado (CNJ na lista), pulando deleção"
+                        )
+                        continue
 
                     if self.dry_run:
                         logger.info(
-                            f"[DRY-RUN] CNJ {cnj_label}: negócio {deal_id} seria deletado"
+                            f"[DRY-RUN] {cnj_label}: negócio {deal_id} seria deletado"
                         )
                         deleted_count += 1
                     elif self.client.delete_deal(deal_id):
                         deleted_count += 1
-                        logger.info(f"CNJ {cnj_label}: negócio {deal_id} deletado")
+                        logger.info(f"{cnj_label}: negócio {deal_id} deletado")
                     else:
                         skipped_deletions += 1
-                        logger.error(
-                            f"CNJ {cnj_label}: falha ao deletar negócio {deal_id}"
-                        )
+                        logger.error(f"{cnj_label}: falha ao deletar negócio {deal_id}")
         except Exception as e:
             logger.error(f"Erro ao deletar negócios no estágio de deleção: {e}")
 
@@ -257,6 +292,42 @@ class PloomesSync:
             match = re.search(r"\b\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}\b", title)
             if match:
                 return match.group(0)
+
+        return None
+
+    def _extract_origin_deal_id_from_deal(self, deal: Dict) -> Optional[int]:
+        """
+        Extrai o OriginDealId de um negócio Ploomes.
+
+        Args:
+            deal: Dicionário representando o negócio
+
+        Returns:
+            OriginDealId extraído ou None se não encontrado
+        """
+        # First, check if it's a direct field
+        origin_deal_id = deal.get("OriginDealId")
+        if origin_deal_id:
+            return int(origin_deal_id)
+
+        return None
+
+    def _extract_mesa_from_deal(self, deal: Dict) -> Optional[str]:
+        """
+        Extrai a Mesa de um negócio Ploomes.
+
+        Args:
+            deal: Dicionário representando o negócio
+
+        Returns:
+            Mesa extraída ou None se não encontrado
+        """
+        other_properties = deal.get("OtherProperties", [])
+        for prop in other_properties:
+            if prop.get("FieldKey") == "deal_6FB5087A-22DA-42E1-A993-D85C6BAECEA3":
+                value = str(prop.get("StringValue", "")).strip()
+                if value:
+                    return value
 
         return None
 

@@ -179,7 +179,9 @@ class PloomesClient:
             self.logger.warning(f"ID de negócio inválido: {deal_id}")
             return None
         try:
-            response = self._make_request("GET", f"Deals({deal_id})")
+            response = self._make_request(
+                "GET", f"Deals({deal_id})?$expand=OtherProperties"
+            )
             data = response.json()
 
             # A API pode retornar um objeto direto ou dentro de "value"
