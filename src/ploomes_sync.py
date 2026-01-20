@@ -138,34 +138,59 @@ class PloomesSync:
 
                     # Movimentar o deal de origem antes de deletar
                     origin_deal_id = self._extract_origin_deal_id_from_deal(deal)
-                    mesa = self._extract_mesa_from_deal(deal)
 
-                    if origin_deal_id and mesa and mesa in self.origin_config:
-                        origin_pipeline = self.origin_config[mesa]
-                        origin_pipeline_id = origin_pipeline["pipeline_id"]
-                        origin_stage_id = origin_pipeline["stage_id"]
+                    logger.debug(f"Deal {deal_id}: OriginDealId={origin_deal_id}")
 
-                        # Verificar se o deal de origem está no pipeline de origem
+                    if origin_deal_id:
+                        # Buscar o deal de origem para obter seu pipeline
                         origin_deal = self.client.get_deal_by_id(origin_deal_id)
-                        if (
-                            origin_deal
-                            and origin_deal.get("PipelineId") == origin_pipeline_id
-                        ):
-                            if self.dry_run:
-                                logger.info(
-                                    f"[DRY-RUN] Movendo deal de origem {origin_deal_id} "
-                                    f"para estágio {origin_stage_id} no pipeline {origin_pipeline_id}"
-                                )
-                            elif self.client.update_deal_stage(
-                                origin_deal_id, origin_stage_id
-                            ):
-                                logger.info(
-                                    f"Deal de origem {origin_deal_id} movido para estágio {origin_stage_id}"
-                                )
+
+                        if origin_deal:
+                            origin_pipeline_id = origin_deal.get("PipelineId")
+                            logger.debug(
+                                f"Deal de origem {origin_deal_id} encontrado: "
+                                f"PipelineId={origin_pipeline_id}"
+                            )
+
+                            # Buscar configuração baseada no pipeline de origem
+                            origin_config = None
+                            for mesa, config in self.origin_config.items():
+                                if config["pipeline_id"] == origin_pipeline_id:
+                                    origin_config = config
+                                    logger.debug(
+                                        f"Configuração encontrada para pipeline {origin_pipeline_id} (mesa '{mesa}'): "
+                                        f"stage_id={config['stage_id']}"
+                                    )
+                                    break
+
+                            if origin_config:
+                                origin_stage_id = origin_config["stage_id"]
+
+                                if self.dry_run:
+                                    logger.info(
+                                        f"[DRY-RUN] Movendo deal de origem {origin_deal_id} "
+                                        f"para estágio {origin_stage_id} no pipeline {origin_pipeline_id}"
+                                    )
+                                elif self.client.update_deal_stage(
+                                    origin_deal_id, origin_stage_id
+                                ):
+                                    logger.info(
+                                        f"Deal de origem {origin_deal_id} movido para estágio {origin_stage_id}"
+                                    )
+                                else:
+                                    logger.error(
+                                        f"Falha ao mover deal de origem {origin_deal_id}"
+                                    )
                             else:
-                                logger.error(
-                                    f"Falha ao mover deal de origem {origin_deal_id}"
+                                logger.debug(
+                                    f"Pipeline {origin_pipeline_id} do deal de origem não está na configuração"
                                 )
+                        else:
+                            logger.warning(
+                                f"Deal de origem {origin_deal_id} não encontrado"
+                            )
+                    else:
+                        logger.debug(f"Deal {deal_id}: OriginDealId não encontrado")
 
                     cnj_label = self._extract_cnj_from_deal(deal) or "sem CNJ"
 

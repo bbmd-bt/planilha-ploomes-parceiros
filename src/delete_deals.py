@@ -37,7 +37,7 @@ PIPELINE_CONFIG = {
         "deletion_stage_id": 110351790,
     },
     "BBMD Pipeline": {"target_stage_id": 110351793, "deletion_stage_id": 110351792},
-    "Pipeline de Teste": {"target_stage_id": 110352958, "deletion_stage_id": 110352957},
+    "Pipeline de Teste": {"target_stage_id": 110353005, "deletion_stage_id": 110353004},
 }
 
 # Mapeamento de mesas para pipelines de origem e estágios de destino

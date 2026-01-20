@@ -269,7 +269,7 @@ class PloomesClient:
             self.logger.warning(f"ID de estágio inválido: {stage_id}")
             return []
         endpoint = (
-            "Deals?$select=Id,StageId,Title,CreateDate,OtherProperties"
+            "Deals?$select=Id,StageId,Title,CreateDate,OriginDealId,PipelineId,OtherProperties"
             f"&$expand=OtherProperties&$filter=StageId eq {stage_id}"
         )
 
