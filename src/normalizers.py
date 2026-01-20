@@ -115,7 +115,7 @@ def normalize_escritorio(escritorio_str: str) -> tuple[str, Optional[str]]:
             return valid_name, None
 
     # Tenta fuzzy match com Levenshtein
-    matched_name = _find_best_match(escritorio_str, valid_names, threshold=0.80)
+    matched_name = _find_best_match(escritorio_str, valid_names, threshold=0.93)
 
     if matched_name:
         # Retorna o nome válido encontrado e o original para logging

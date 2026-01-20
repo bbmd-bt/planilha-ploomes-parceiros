@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
+import shutil
 from loguru import logger
 
 from transformer import PlanilhaTransformer
@@ -92,11 +93,12 @@ def main() -> int:
     input_path = args.input
     mesa = args.mesa
 
+    hoje = datetime.now().strftime("%d-%m-%Y")
+
     # Define caminho de saída padrão se não informado
     if args.output:
         output_path = args.output
     else:
-        hoje = datetime.now().strftime("%d-%m-%Y")
         output_dir = base_dir / "output" / hoje / mesa
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = output_dir / "importacao_parceiros.xlsx"
@@ -116,6 +118,13 @@ def main() -> int:
     if not input_path.exists():
         logger.error(f"Arquivo de entrada não encontrado: {input_path}")
         sys.exit(1)
+
+    # Copia a planilha de entrada para input/hoje/mesa
+    input_copy_dir = base_dir / "input" / hoje / mesa
+    input_copy_dir.mkdir(parents=True, exist_ok=True)
+    input_copy_path = input_copy_dir / input_path.name
+    shutil.copy(input_path, input_copy_path)
+    logger.info(f"Planilha de entrada copiada para: {input_copy_path}")
 
     logger.info(f"Lendo planilha de entrada: {input_path}")
     try:

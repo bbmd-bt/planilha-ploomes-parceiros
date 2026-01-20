@@ -60,7 +60,7 @@ class PloomesSync:
         target_stage_id: int,
         deletion_stage_id: int,
         dry_run: bool = False,
-        max_workers: int = 5,
+        max_workers: int = 1,
     ):
         self.client = client
         self.target_stage_id = target_stage_id
