@@ -350,8 +350,6 @@ class PloomesSync:
             logger.warning(f"Deal de origem {origin_deal_id} não encontrado")
             return
 
-        logger.debug(f"Full origin_deal for {origin_deal_id}: {origin_deal}")
-
         origin_pipeline_id = origin_deal.get("PipelineId")
         if origin_pipeline_id is None:
             logger.warning(f"PipelineId not found in origin_deal {origin_deal_id}")
