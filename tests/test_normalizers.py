@@ -31,7 +31,8 @@ def test_normalize_email():
 
 def test_normalize_produto():
     assert normalize_produto("Honorários") == "Honorários"
-    assert normalize_produto("invalid") == "À Definir"
+    assert normalize_produto("invalid") == "Integral"
+    assert normalize_produto("Completa") == "Integral"
 
 
 def test_extract_first_value():

@@ -160,13 +160,16 @@ def normalize_email(email_str: str) -> str:
 
 
 def normalize_produto(produto_str: str) -> str:
-    valid = ["À Definir", "Honorários", "Reclamante", "Integral"]
+    valid = ["Integral", "Honorários", "Reclamante"]
     if not produto_str or not isinstance(produto_str, str) or not produto_str.strip():
-        return "À Definir"
+        return "Integral"
+    produto_lower = produto_str.strip().lower()
+    if produto_lower == "completa":
+        return "Integral"
     for v in valid:
-        if produto_str.strip().lower() == v.lower():
+        if produto_lower == v.lower():
             return v
-    return "À Definir"
+    return "Integral"
 
 
 def extract_first_value(values_str: str, separator: str = ";") -> str:
