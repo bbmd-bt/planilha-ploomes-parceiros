@@ -5,6 +5,17 @@ Script para deletar negócios na Ploomes baseado em CNJs de um arquivo Excel.
 Este script lê CNJs de um arquivo Excel, busca os negócios correspondentes na Ploomes,
 move-os para um estágio específico e deleta aqueles que foram movidos com sucesso.
 
+IMPORTANTE: Antes de deletar negócios no estágio de deleção, o script verifica se cada
+negócio já existe na plataforma Parceiros. Isso previne que negócios ainda não importados
+sejam deletados prematuramente. Negócios que não existem em Parceiros são preservados
+para serem importados no próximo ciclo.
+
+Validação Parceiros:
+- Se as credenciais PARCEIROS_API_USERNAME e PARCEIROS_API_PASSWORD estiverem configuradas,
+  cada negócio será validado contra a API da Parceiros antes da deleção
+- Apenas negócios que já existem em Parceiros serão deletados
+- Se um negócio não existir em Parceiros, ele será preservado para importação futura
+
 Uso:
     python src/delete_deals.py --input arquivo.xlsx --api-token TOKEN --pipeline PIPELINE
 """
@@ -27,6 +38,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.ploomes_client import PloomesClient
 from src.ploomes_sync import PloomesSync
+from src.parceiros_client import ParceirosClient
 
 
 # Mapeamento de pipelines para estágios
@@ -209,6 +221,20 @@ python src/delete_deals.py \\
         # Inicializa cliente Ploomes
         client = PloomesClient(args.api_token)
 
+        # Inicializa cliente Parceiros se as credenciais estiverem disponíveis
+        parceiros_client = None
+        parceiros_username = os.getenv("PARCEIROS_API_USERNAME")
+        parceiros_password = os.getenv("PARCEIROS_API_PASSWORD")
+
+        if parceiros_username and parceiros_password:
+            logger.info("Inicializando cliente da API Parceiros...")
+            parceiros_client = ParceirosClient(parceiros_username, parceiros_password)
+        else:
+            logger.warning(
+                "Credenciais da API Parceiros não encontradas. "
+                "Deleção de negócios não será validada contra Parceiros."
+            )
+
         # Inicializa sincronizador com informações de erro
         sync = PloomesSync(
             client=client,
@@ -217,6 +243,7 @@ python src/delete_deals.py \\
             origin_config=ORIGIN_PIPELINE_CONFIG,
             dry_run=args.dry_run,
             cnj_errors=cnj_errors,
+            parceiros_client=parceiros_client,
         )
 
         # Processa CNJs

@@ -19,6 +19,7 @@ import pandas as pd
 from loguru import logger
 
 from src.ploomes_client import PloomesClient
+from src.parceiros_client import ParceirosClient
 
 
 @dataclass
@@ -64,6 +65,7 @@ class PloomesSync:
         dry_run: bool = False,
         max_workers: int = 1,
         cnj_errors: Optional[Dict[str, str]] = None,
+        parceiros_client: Optional[ParceirosClient] = None,
     ):
         self.client = client
         self.target_stage_id = target_stage_id
@@ -72,6 +74,7 @@ class PloomesSync:
         self.dry_run = dry_run
         self.max_workers = max_workers
         self.cnj_errors = cnj_errors or {}  # Mapeamento de CNJ para descrição de erro
+        self.parceiros_client = parceiros_client
 
     def process_cnj_list(self, cnj_list: List[str]) -> SyncReport:
         """
@@ -198,6 +201,14 @@ class PloomesSync:
                             logger.info(
                                 f"{cnj_label}: negócio {deal_id} preservado (CNJ na lista), pulando deleção"
                             )
+                            continue
+
+                        # Verificar se o negócio existe em Parceiros antes de deletar
+                        if not self._deal_exists_in_parceiros(cnj_label):
+                            logger.warning(
+                                f"{cnj_label}: negócio {deal_id} não existe em Parceiros, pulando deleção"
+                            )
+                            skipped_deletions += 1
                             continue
 
                         if self.dry_run:
@@ -784,3 +795,49 @@ class PloomesSync:
             df_stats.to_excel(writer, sheet_name="Estatísticas", index=False)
 
         logger.info(f"Relatório salvo em: {output_path}")
+
+    def _deal_exists_in_parceiros(self, cnj: str) -> bool:
+        """
+        Verifica se um negócio já existe na plataforma Parceiros.
+
+        Args:
+            cnj: CNJ do negócio a ser verificado
+
+        Returns:
+            True se o negócio existe em Parceiros, False caso contrário ou sem cliente
+        """
+        if not self.parceiros_client:
+            # Se não houver cliente Parceiros, não fazer validação
+            return True
+
+        try:
+            # Autenticar se necessário
+            if (
+                not hasattr(self.parceiros_client, "token")
+                or not self.parceiros_client.token
+            ):
+                if not self.parceiros_client.authenticate():
+                    logger.error("Falha ao autenticar na API Parceiros")
+                    return True  # Ser permissivo em caso de erro
+
+            # Buscar diretamente por CNJ na API Parceiros
+            leads = self.parceiros_client.get_leads_by_cnj(cnj)
+            exists = len(leads) > 0
+
+            if exists:
+                logger.info(
+                    f"CNJ {cnj}: Lead encontrado em Parceiros, permitindo deleção"
+                )
+            else:
+                logger.warning(
+                    f"CNJ {cnj}: Lead NÃO encontrado em Parceiros, bloqueando deleção"
+                )
+
+            return exists
+
+        except Exception as e:
+            logger.error(
+                f"Erro ao verificar lead em Parceiros: {e}, permitindo deleção"
+            )
+            # Se houver erro, ser permissivo
+            return True
