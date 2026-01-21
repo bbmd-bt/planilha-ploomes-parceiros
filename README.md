@@ -50,10 +50,14 @@ planilha-ploomes-parceiros/
 │   ├── extract_escritorios.py # Extração de escritórios únicos
 │   ├── ploomes_client.py    # Cliente para API Ploomes
 │   ├── ploomes_sync.py      # Lógica de sincronização
-│   └── delete_deals.py      # Script de deleção de negócios
+│   ├── delete_deals.py      # Script de deleção de negócios
+│   ├── upload_leads_history.py # Upload do histórico de leads
+│   └── mirror_pipeline.py   # Espelhamento de pipeline
 ├── tests/                   # Testes automatizados
+│   └── test_upload_leads_history.py # Testes do upload de histórico
 ├── input/                   # Planilhas de entrada (.xlsx)
 ├── output/                  # Planilhas de saída (.xlsx)
+├── errors/                  # Planilhas de erros (.xlsx)
 ├── utils/                   # Utilitários e arquivos auxiliares
 │   ├── escritorios.json     # Mapeamento de escritórios
 │   └── negociadores.json    # Mapeamento de negociadores
@@ -85,6 +89,118 @@ cp .env.example .env
 ```
 
 Edite o arquivo `.env` com suas credenciais do banco de dados PostgreSQL.
+
+## Upload do Histórico de Leads
+
+Este script faz upload do histórico de leads bem-sucedidos e com erro para uma tabela PostgreSQL, permitindo rastrear o resultado da importação de leads por parceiro.
+
+### Funcionalidades
+
+- **Processamento Inteligente**: Identifica automaticamente leads bem-sucedidos (presentes apenas na planilha de sucesso) e leads com erro
+- **UPSERT**: Atualiza registros existentes ou insere novos usando `ON CONFLICT`
+- **Flexibilidade de Colunas**: Suporta tanto "Negociador" quanto "Responsável" nas planilhas
+- **Modo Dry-Run**: Permite testar o processamento sem afetar o banco de dados
+- **Logs Detalhados**: Acompanhamento completo do processamento
+
+### Estrutura da Tabela
+
+```sql
+CREATE TABLE leads_parceiros_upload_history (
+    cnj VARCHAR(50) PRIMARY KEY,
+    negociador VARCHAR(255) NOT NULL,
+    mesa VARCHAR(100) NOT NULL,
+    erro BOOLEAN NOT NULL DEFAULT FALSE,
+    mensagem_erro TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### Como Usar
+
+#### Modo Básico
+
+```bash
+python src/upload_leads_history.py \
+  --success "input/todos_leads.xlsx" \
+  --errors "input/leads_com_erro.xlsx" \
+  --mesa "Nome da Mesa"
+```
+
+#### Modo Dry-Run (Recomendado para Testes)
+
+```bash
+python src/upload_leads_history.py \
+  --success "input/todos_leads.xlsx" \
+  --errors "input/leads_com_erro.xlsx" \
+  --mesa "Nome da Mesa" \
+  --dry-run
+```
+
+#### Com Logging Detalhado
+
+```bash
+python src/upload_leads_history.py \
+  --success "input/todos_leads.xlsx" \
+  --errors "input/leads_com_erro.xlsx" \
+  --mesa "Nome da Mesa" \
+  --log-level DEBUG \
+  --log "logs/upload_history.log"
+```
+
+### Parâmetros
+
+- `--success, -s`: Caminho para a planilha Excel com todos os leads (obrigatório)
+- `--errors, -e`: Caminho para a planilha Excel com leads que falharam (obrigatório)
+- `--mesa, -m`: Nome da mesa referente aos leads (obrigatório)
+- `--dry-run`: Executa em modo teste, processa dados mas não envia ao banco
+- `--log-level`: Nível de log (DEBUG, INFO, WARNING, ERROR) - padrão: INFO
+- `--log`: Caminho para arquivo de log (opcional)
+
+### Formato das Planilhas
+
+#### Planilha de Sucesso (Todos os Leads)
+Colunas obrigatórias:
+- `CNJ`: Número do processo judicial
+- `Negociador` ou `Responsável`: Nome do negociador responsável
+
+#### Planilha de Erros
+Colunas obrigatórias:
+- `CNJ`: Número do processo judicial
+- `Negociador` ou `Responsável`: Nome do negociador responsável
+- `Erro`: Mensagem de erro da importação
+
+### Configuração do Banco
+
+Configure as variáveis de ambiente no arquivo `.env`:
+
+```bash
+# Opção 1: URL completa do banco
+DATABASE_URL=postgresql://usuario:senha@localhost:5432/database
+
+# Opção 2: Componentes separados
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=database
+DB_USER=usuario
+DB_PASSWORD=senha
+```
+
+### Exemplo de Saída
+
+```
+2024-01-20 10:30:15.123 | INFO     | __main__:run:230 - === Iniciando upload do histórico de leads ===
+2024-01-20 10:30:15.123 | INFO     | __main__:run:231 - Planilha de sucesso: input/todos_leads.xlsx
+2024-01-20 10:30:15.123 | INFO     | __main__:run:232 - Planilha de erros: input/leads_com_erro.xlsx
+2024-01-20 10:30:15.123 | INFO     | __main__:run:233 - Mesa: Mesa JPA
+2024-01-20 10:30:15.456 | INFO     | __main__:load_success_leads:102 - Carregados 187 leads da planilha de sucesso
+2024-01-20 10:30:15.567 | INFO     | __main__:load_error_leads:128 - Carregados 184 leads com erro da planilha de erros
+2024-01-20 10:30:15.678 | INFO     | __main__:process_leads:194 - Processados 3 leads bem-sucedidos e 184 leads com erro
+2024-01-20 10:30:15.789 | INFO     | __main__:run:244 - === Upload concluído com sucesso ===
+2024-01-20 10:30:15.789 | INFO     | __main__:run:245 - Total processado: 187
+2024-01-20 10:30:15.789 | INFO     | __main__:run:246 - Leads bem-sucedidos: 3
+2024-01-20 10:30:15.789 | INFO     | __main__:run:247 - Leads com erro: 184
+```
 
 ## Uso
 

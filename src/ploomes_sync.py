@@ -9,7 +9,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, cast
 import re
 
 # Adicionar o diretório pai ao sys.path para imports funcionarem
@@ -30,6 +30,7 @@ class ProcessingResult:
     moved_successfully: bool = False
     deleted_successfully: bool = False
     error_message: Optional[str] = None
+    error_description: Optional[str] = None  # Descrição do erro do arquivo Excel
 
 
 @dataclass
@@ -62,6 +63,7 @@ class PloomesSync:
         origin_config: Optional[Dict[str, Dict[str, int]]] = None,
         dry_run: bool = False,
         max_workers: int = 1,
+        cnj_errors: Optional[Dict[str, str]] = None,
     ):
         self.client = client
         self.target_stage_id = target_stage_id
@@ -69,6 +71,7 @@ class PloomesSync:
         self.origin_config = origin_config or {}
         self.dry_run = dry_run
         self.max_workers = max_workers
+        self.cnj_errors = cnj_errors or {}  # Mapeamento de CNJ para descrição de erro
 
     def process_cnj_list(self, cnj_list: List[str]) -> SyncReport:
         """
@@ -136,8 +139,6 @@ class PloomesSync:
             results = []  # No results
 
         # Mover deals de origem para todos os negócios no target_stage
-
-        # Mover deals de origem para todos os negócios no target_stage
         try:
             all_target_deals = self.client.search_deals_by_stage(self.target_stage_id)
             if all_target_deals:
@@ -145,11 +146,29 @@ class PloomesSync:
                     f"Movendo deals de origem para {len(all_target_deals)} negócios no target_stage"
                 )
                 for deal in all_target_deals:
-                    self._move_origin_deal(deal)
+                    # Extrair CNJ do deal para obter a descrição do erro
+                    cnj = self._extract_cnj_from_deal(deal)
+                    error_description: Optional[str] = None
+                    if cnj:
+                        error_description = cast(
+                            Optional[str], self.cnj_errors.get(cnj)
+                        )
+                    self._move_origin_deal(deal, error_description=error_description)
         except Exception as e:
             logger.error(
                 f"Erro ao mover deals de origem para negócios no target_stage: {e}"
             )
+
+        # Deletar todos os negócios no target_stage após mover deals de origem
+        try:
+            logger.info(f"Deletando negócios do target_stage {self.target_stage_id}")
+            target_delete_stats = self._delete_all_deals_in_target_stage()
+            logger.info(
+                f"Deleção do target_stage concluída: {target_delete_stats['deleted']} deletados, "
+                f"{target_delete_stats['skipped']} pulados"
+            )
+        except Exception as e:
+            logger.error(f"Erro ao deletar negócios do target_stage: {e}")
 
         # Agora, deletar negócios no estágio de deleção que não estão na lista de CNJs preservados
         if not deletion_stage_empty:
@@ -203,6 +222,8 @@ class PloomesSync:
             logger.info("Pulando deleção pois estágio de deleção está vazio.")
             report.successfully_deleted = 0
             report.skipped_deletions = 0
+            deleted_count = 0
+            skipped_deletions = 0
 
         logger.info(
             f"Processamento concluído: {report.successfully_moved} movidos, {report.failed_movements} falhas, "
@@ -327,12 +348,18 @@ class PloomesSync:
 
         return None
 
-    def _move_origin_deal(self, deal: Dict) -> None:
+    def _move_origin_deal(
+        self, deal: Dict, error_description: Optional[str] = None
+    ) -> None:
         """
-        Move o deal de origem para o estágio configurado.
+        Move o deal de origem para o estágio configurado e adiciona Interaction Record com erro.
+
+        Se o deal já estiver no estágio correto, verifica se já possui o Interaction Record
+        e cria um novo se necessário.
 
         Args:
             deal: Dicionário representando o negócio que foi movido para target_stage
+            error_description: Descrição do erro a ser adicionada como Interaction Record
         """
         deal_id = deal.get("Id")
         origin_deal_id = self._extract_origin_deal_id_from_deal(deal)
@@ -343,7 +370,7 @@ class PloomesSync:
             logger.debug(f"Deal {deal_id}: OriginDealId não encontrado")
             return
 
-        # Buscar o deal de origem para obter seu pipeline
+        # Buscar o deal de origem para obter seu pipeline e estágio
         origin_deal = self.client.get_deal_by_id(origin_deal_id)
 
         if not origin_deal:
@@ -351,13 +378,15 @@ class PloomesSync:
             return
 
         origin_pipeline_id = origin_deal.get("PipelineId")
+        origin_stage_id_current = origin_deal.get("StageId")
+
         if origin_pipeline_id is None:
             logger.warning(f"PipelineId not found in origin_deal {origin_deal_id}")
             return
 
         logger.debug(
             f"Deal de origem {origin_deal_id} encontrado: "
-            f"PipelineId={origin_pipeline_id}"
+            f"PipelineId={origin_pipeline_id}, StageId={origin_stage_id_current}"
         )
 
         # Buscar configuração baseada no pipeline de origem
@@ -380,6 +409,100 @@ class PloomesSync:
             return
 
         origin_stage_id = origin_config["stage_id"]
+
+        # Verificar se o deal já está no estágio correto
+        is_already_in_correct_stage = str(origin_stage_id_current) == str(
+            origin_stage_id
+        )
+
+        if is_already_in_correct_stage:
+            logger.info(
+                f"Deal de origem {origin_deal_id} já está no estágio correto "
+                f"({origin_stage_id}) no pipeline {origin_pipeline_id} (mesa '{mesa_name}')"
+            )
+
+            # Se houver descrição de erro, verificar se já tem Interaction Record
+            if error_description and not self.dry_run:
+                try:
+                    # Verificar se o deal já possui LastInteractionRecordId
+                    last_interaction_record_id = origin_deal.get(
+                        "LastInteractionRecordId"
+                    )
+
+                    if last_interaction_record_id:
+                        logger.info(
+                            f"Deal de origem {origin_deal_id} já possui "
+                            f"LastInteractionRecordId: {last_interaction_record_id}"
+                        )
+                    else:
+                        # Criar novo Interaction Record
+                        interaction_record_id = self.client.create_interaction_record(
+                            origin_deal_id, error_description
+                        )
+                        if interaction_record_id:
+                            logger.info(
+                                f"Interaction Record criado para deal de origem "
+                                f"{origin_deal_id} já no estágio correto: "
+                                f"ID={interaction_record_id}, Erro: {error_description}"
+                            )
+                            # Fazer PATCH no deal com o ID da interação
+                            if self.client.update_deal_last_interaction_record(
+                                origin_deal_id, interaction_record_id
+                            ):
+                                logger.info(
+                                    f"Deal de origem {origin_deal_id} "
+                                    f"atualizado com "
+                                    f"LastInteractionRecordId="
+                                    f"{interaction_record_id}"
+                                )
+                            else:
+                                logger.warning(
+                                    f"Falha ao atualizar deal de origem {origin_deal_id} com LastInteractionRecordId"
+                                )
+                        else:
+                            logger.warning(
+                                f"Falha ao criar Interaction Record para deal de origem {origin_deal_id}"
+                            )
+                except Exception as e:
+                    logger.error(
+                        f"Erro ao verificar/criar Interaction Record para deal de origem {origin_deal_id}: {e}"
+                    )
+            return
+
+        # Se houver descrição de erro, criar Interaction Record antes de mover
+        interaction_record_id = None
+        if error_description and not self.dry_run:
+            try:
+                interaction_record_id = self.client.create_interaction_record(
+                    origin_deal_id, error_description
+                )
+                if interaction_record_id:
+                    logger.info(
+                        f"Interaction Record criado para deal de origem {origin_deal_id}: "
+                        f"ID={interaction_record_id}, Erro: {error_description}"
+                    )
+                    # Fazer PATCH no deal com o ID da interação
+                    if self.client.update_deal_last_interaction_record(
+                        origin_deal_id, interaction_record_id
+                    ):
+                        logger.info(
+                            f"Deal de origem {origin_deal_id} atualizado com "
+                            f"LastInteractionRecordId={interaction_record_id}"
+                        )
+                    else:
+                        logger.warning(
+                            f"Falha ao atualizar deal de origem {origin_deal_id} com "
+                            "LastInteractionRecordId"
+                        )
+                else:
+                    logger.warning(
+                        f"Falha ao criar Interaction Record para deal de "
+                        f"origem {origin_deal_id}"
+                    )
+            except Exception as e:
+                logger.error(
+                    f"Erro ao criar Interaction Record para deal de origem {origin_deal_id}: {e}"
+                )
 
         if self.dry_run:
             logger.info(
@@ -500,6 +623,53 @@ class PloomesSync:
 
         return result
 
+    def _delete_all_deals_in_target_stage(self) -> Dict[str, int]:
+        """
+        Deleta todos os negócios que estão no estágio alvo (target_stage).
+
+        Returns:
+            Dicionário com contadores de deletados e pulados
+        """
+        deleted_count = 0
+        skipped_count = 0
+
+        try:
+            # Buscar todos os negócios no estágio alvo
+            deals = self.client.search_deals_by_stage(self.target_stage_id)
+
+            if not deals:
+                logger.info("Nenhum negócio encontrado no estágio alvo para deletar")
+                return {"deleted": 0, "skipped": 0}
+
+            logger.info(
+                f"Encontrados {len(deals)} negócios no estágio alvo para deletar"
+            )
+
+            for deal in deals:
+                deal_id = deal.get("Id")
+                if deal_id:
+                    if self.dry_run:
+                        logger.info(f"[DRY-RUN] Deletaria negócio {deal_id}")
+                        deleted_count += 1
+                    elif self.client.delete_deal(deal_id):
+                        deleted_count += 1
+                        logger.debug(f"Negócio {deal_id} deletado com sucesso")
+                    else:
+                        skipped_count += 1
+                        logger.warning(f"Falha ao deletar negócio {deal_id}")
+                else:
+                    skipped_count += 1
+                    logger.warning(f"Negócio sem ID encontrado: {deal}")
+
+        except Exception as e:
+            logger.error(f"Erro ao deletar negócios no estágio alvo: {e}")
+            skipped_count += len(deals) if "deals" in locals() else 0
+
+        logger.info(
+            f"Deleção do target_stage concluída: {deleted_count} deletados, {skipped_count} pulados"
+        )
+        return {"deleted": deleted_count, "skipped": skipped_count}
+
     def _delete_all_deals_in_deletion_stage(self) -> Dict[str, int]:
         """
         Deleta todos os negócios que estão no estágio de deleção.
@@ -544,15 +714,15 @@ class PloomesSync:
         return {"deleted_count": deleted_count, "skipped_count": skipped_count}
 
     @staticmethod
-    def load_cnjs_from_excel(file_path: str) -> List[str]:
+    def load_cnjs_from_excel(file_path: str) -> tuple:
         """
-        Carrega lista de CNJs de um arquivo Excel.
+        Carrega lista de CNJs e descrições de erros de um arquivo Excel.
 
         Args:
             file_path: Caminho para o arquivo Excel
 
         Returns:
-            Lista de CNJs válidos
+            Tupla contendo (lista de CNJs válidos, dicionário mapeando CNJ para erro)
         """
         try:
             df = pd.read_excel(file_path)
@@ -561,14 +731,27 @@ class PloomesSync:
             if "CNJ" not in df.columns:
                 raise ValueError("Coluna 'CNJ' não encontrada no arquivo Excel")
 
-            # Extrai CNJs não vazios
+            # Extrai CNJs não vazios e mapeamento de erros
             cnjs = []
-            for value in df["CNJ"].dropna():
-                cnj_str = str(value).strip()
+            cnj_errors = {}
+            for _, row in df.iterrows():
+                cnj_value = row.get("CNJ")
+                if pd.isna(cnj_value):
+                    continue
+
+                cnj_str = str(cnj_value).strip()
                 if cnj_str:
                     cnjs.append(cnj_str)
 
-            return cnjs
+                    # Capturar descrição do erro se existir coluna "Erro"
+                    if "Erro" in df.columns:
+                        erro_value = row.get("Erro")
+                        if not pd.isna(erro_value):
+                            erro_str = str(erro_value).strip()
+                            if erro_str:
+                                cnj_errors[cnj_str] = erro_str
+
+            return cnjs, cnj_errors
 
         except Exception as e:
             raise ValueError(f"Erro ao ler arquivo Excel: {e}")

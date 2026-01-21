@@ -436,3 +436,95 @@ class PloomesClient:
             return data
         except PloomesAPIError:
             return None
+
+    def create_interaction_record(self, deal_id: int, content: str) -> Optional[int]:
+        """
+        Cria um Interaction Record para um negócio.
+
+        Args:
+            deal_id: ID do negócio
+            content: Conteúdo da interação
+
+        Returns:
+            ID do Interaction Record criado ou None se falhar
+        """
+        # Validação dos parâmetros
+        if not isinstance(deal_id, int) or deal_id <= 0:
+            self.logger.warning(f"ID de negócio inválido: {deal_id}")
+            return None
+
+        if not isinstance(content, str) or not content.strip():
+            self.logger.warning("Conteúdo de interação vazio ou inválido")
+            return None
+
+        payload = {"Content": content}
+
+        try:
+            response = self._make_request(
+                "POST", f"Deals({deal_id})/InteractionRecords", json=payload
+            )
+            data = response.json()
+
+            # Extrair o ID da interação criada
+            if isinstance(data, dict):
+                interaction_id = data.get("Id")
+                if interaction_id:
+                    self.logger.info(
+                        f"Interaction Record criado com sucesso para negócio {deal_id}: ID={interaction_id}"
+                    )
+                    return interaction_id
+                else:
+                    self.logger.warning(
+                        f"Resposta de criação de Interaction Record não contém ID: {data}"
+                    )
+                    return None
+            else:
+                self.logger.warning(
+                    f"Resposta inesperada ao criar Interaction Record: {data}"
+                )
+                return None
+
+        except PloomesAPIError as e:
+            self.logger.error(
+                f"Erro ao criar Interaction Record para negócio {deal_id}: {e}"
+            )
+            return None
+
+    def update_deal_last_interaction_record(
+        self, deal_id: int, interaction_record_id: int
+    ) -> bool:
+        """
+        Atualiza o campo LastInteractionRecordId de um negócio.
+
+        Args:
+            deal_id: ID do negócio
+            interaction_record_id: ID do Interaction Record
+
+        Returns:
+            True se a atualização foi bem-sucedida
+        """
+        # Validação dos IDs
+        if not isinstance(deal_id, int) or deal_id <= 0:
+            self.logger.warning(f"ID de negócio inválido: {deal_id}")
+            return False
+
+        if not isinstance(interaction_record_id, int) or interaction_record_id <= 0:
+            self.logger.warning(
+                f"ID de Interaction Record inválido: {interaction_record_id}"
+            )
+            return False
+
+        payload = {"LastInteractionRecordId": interaction_record_id}
+
+        try:
+            self._make_request("PATCH", f"Deals({deal_id})", json=payload)
+            self.logger.info(
+                f"Negócio {deal_id} atualizado com LastInteractionRecordId={interaction_record_id}"
+            )
+            return True
+
+        except PloomesAPIError as e:
+            self.logger.error(
+                f"Erro ao atualizar LastInteractionRecordId do negócio {deal_id}: {e}"
+            )
+            return False

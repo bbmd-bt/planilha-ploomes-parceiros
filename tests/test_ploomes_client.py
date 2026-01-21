@@ -114,3 +114,69 @@ class TestPloomesClient:
         result = client.delete_deal(123)
 
         assert result is False
+
+    @patch("src.ploomes_client.requests.Session.request")
+    def test_create_interaction_record_success(self, mock_request, client):
+        """Testa criação de Interaction Record com sucesso."""
+        mock_response = Mock()
+        mock_response.json.return_value = {"Id": 456}
+        mock_request.return_value = mock_response
+
+        result = client.create_interaction_record(123, "Test error message")
+
+        assert result == 456
+
+        # Verifica chamada da API
+        args = mock_request.call_args
+        assert args[0][0] == "POST"
+        assert "Deals(123)/InteractionRecords" in args[0][1]
+        assert args[1]["json"]["Content"] == "Test error message"
+
+    @patch("src.ploomes_client.requests.Session.request")
+    def test_create_interaction_record_failure(self, mock_request, client):
+        """Testa falha na criação de Interaction Record."""
+        mock_request.side_effect = PloomesAPIError("API Error")
+
+        result = client.create_interaction_record(123, "Test error message")
+
+        assert result is None
+
+    def test_create_interaction_record_invalid_deal_id(self, client):
+        """Testa criação de Interaction Record com ID inválido."""
+        result = client.create_interaction_record(-1, "Test error message")
+        assert result is None
+
+    def test_create_interaction_record_empty_content(self, client):
+        """Testa criação de Interaction Record com conteúdo vazio."""
+        result = client.create_interaction_record(123, "")
+        assert result is None
+
+    @patch("src.ploomes_client.requests.Session.request")
+    def test_update_deal_last_interaction_record_success(self, mock_request, client):
+        """Testa atualização de LastInteractionRecordId com sucesso."""
+        mock_response = Mock()
+        mock_request.return_value = mock_response
+
+        result = client.update_deal_last_interaction_record(123, 456)
+
+        assert result is True
+
+        # Verifica chamada da API
+        args = mock_request.call_args
+        assert args[0][0] == "PATCH"
+        assert "Deals(123)" in args[0][1]
+        assert args[1]["json"]["LastInteractionRecordId"] == 456
+
+    @patch("src.ploomes_client.requests.Session.request")
+    def test_update_deal_last_interaction_record_failure(self, mock_request, client):
+        """Testa falha na atualização de LastInteractionRecordId."""
+        mock_request.side_effect = PloomesAPIError("API Error")
+
+        result = client.update_deal_last_interaction_record(123, 456)
+
+        assert result is False
+
+    def test_update_deal_last_interaction_record_invalid_ids(self, client):
+        """Testa atualização com IDs inválidos."""
+        assert client.update_deal_last_interaction_record(-1, 456) is False
+        assert client.update_deal_last_interaction_record(123, -1) is False

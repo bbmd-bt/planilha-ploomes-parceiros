@@ -196,8 +196,11 @@ python src/delete_deals.py \\
     try:
         # Carrega CNJs do arquivo Excel
         logger.info("Carregando CNJs do arquivo Excel...")
-        cnj_list = PloomesSync.load_cnjs_from_excel(str(args.input))
+        cnj_list, cnj_errors = PloomesSync.load_cnjs_from_excel(str(args.input))
         logger.info(f"Encontrados {len(cnj_list)} CNJs para processar")
+
+        if cnj_errors:
+            logger.info(f"Encontradas descrições de erro para {len(cnj_errors)} CNJs")
 
         if not cnj_list:
             logger.warning("Nenhum CNJ válido encontrado no arquivo")
@@ -206,13 +209,14 @@ python src/delete_deals.py \\
         # Inicializa cliente Ploomes
         client = PloomesClient(args.api_token)
 
-        # Inicializa sincronizador
+        # Inicializa sincronizador com informações de erro
         sync = PloomesSync(
             client=client,
             target_stage_id=pipeline_config["target_stage_id"],
             deletion_stage_id=pipeline_config["deletion_stage_id"],
             origin_config=ORIGIN_PIPELINE_CONFIG,
             dry_run=args.dry_run,
+            cnj_errors=cnj_errors,
         )
 
         # Processa CNJs
