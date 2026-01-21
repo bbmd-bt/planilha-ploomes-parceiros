@@ -4,6 +4,9 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+# Adiciona o diretório raiz do projeto ao path para imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import pandas as pd
 import shutil
 from dotenv import load_dotenv
@@ -16,9 +19,6 @@ from config import MESA_DELETION_STAGE_MAP
 # Carregar variáveis de ambiente do arquivo .env
 load_dotenv()
 from database.db_updater import DatabaseUpdater, DatabaseUpdateError
-
-# Adiciona o diretório src ao path para imports
-sys.path.insert(0, str(Path(__file__).parent))
 
 
 def main() -> int:
