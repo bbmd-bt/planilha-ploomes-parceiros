@@ -64,6 +64,63 @@ def test_transformer():
     assert result.iloc[0]["Telefone"] == "(11) 99999-9999"
 
 
+def test_transformer_bbmd_negociador():
+    data = {
+        "CNJ": ["1234567-89.0123.4.56.7890"],
+        "Nome do Cliente": ["João Silva"],
+        "Produto": ["Honorários"],
+        "Responsável": [""],  # Negociador vazio
+        "E-mail do Cliente": ["joao@email.com"],
+        "Telefones do Cliente": ["11999999999"],
+        "Escritório": ["Escritório ABC"],
+    }
+    df = pd.DataFrame(data)
+
+    transformer = PlanilhaTransformer(mesa="BBMD")
+    result = transformer.transform(df)
+
+    assert len(result) == 1
+    assert result.iloc[0]["Negociador"] == "Iasmin Barbosa"
+
+
+def test_transformer_bbmd_franciele():
+    data = {
+        "CNJ": ["1234567-89.0123.4.56.7890"],
+        "Nome do Cliente": ["João Silva"],
+        "Produto": ["Honorários"],
+        "Responsável": ["Franciele Menezes"],  # Deve ser substituído
+        "E-mail do Cliente": ["joao@email.com"],
+        "Telefones do Cliente": ["11999999999"],
+        "Escritório": ["Escritório ABC"],
+    }
+    df = pd.DataFrame(data)
+
+    transformer = PlanilhaTransformer(mesa="BBMD")
+    result = transformer.transform(df)
+
+    assert len(result) == 1
+    assert result.iloc[0]["Negociador"] == "Iasmin Barbosa"
+
+
+def test_transformer_bbmd_case_insensitive():
+    data = {
+        "CNJ": ["1234567-89.0123.4.56.7890"],
+        "Nome do Cliente": ["João Silva"],
+        "Produto": ["Honorários"],
+        "Responsável": [""],  # Vazio
+        "E-mail do Cliente": ["joao@email.com"],
+        "Telefones do Cliente": ["11999999999"],
+        "Escritório": ["Escritório ABC"],
+    }
+    df = pd.DataFrame(data)
+
+    transformer = PlanilhaTransformer(mesa="bbmd")  # minúsculo
+    result = transformer.transform(df)
+
+    assert len(result) == 1
+    assert result.iloc[0]["Negociador"] == "Iasmin Barbosa"
+
+
 if __name__ == "__main__":
     test_normalize_cnj()
     test_normalize_phone()
@@ -71,4 +128,7 @@ if __name__ == "__main__":
     test_normalize_produto()
     test_extract_first_value()
     test_transformer()
+    test_transformer_bbmd_negociador()
+    test_transformer_bbmd_franciele()
+    test_transformer_bbmd_case_insensitive()
     print("All tests passed")

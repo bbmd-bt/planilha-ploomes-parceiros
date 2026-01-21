@@ -19,10 +19,11 @@ from .normalizers import (
 
 
 class PlanilhaTransformer:
-    def __init__(self, ploomes_client=None, deletion_stage_id=None):
+    def __init__(self, ploomes_client=None, deletion_stage_id=None, mesa=None):
         self.errors = []
         self.ploomes_client = ploomes_client
         self.deletion_stage_id = deletion_stage_id
+        self.mesa = mesa
 
     def transform(self, input_df: pd.DataFrame) -> pd.DataFrame:
         # Usar operações vetorizadas para melhor performance
@@ -55,11 +56,25 @@ class PlanilhaTransformer:
         )
 
         # Negociador
-        output_data["Negociador"] = (
+        negociador_series = (
             input_df.get("Responsável", pd.Series(dtype=str))
             .fillna("")
             .apply(map_negotiator)
         )
+        # Se mesa for BBMD, substituir "Franciele Menezes" por "Iasmin Barbosa"
+        # e preencher vazios com "Iasmin Barbosa"
+        if self.mesa and self.mesa.upper() == "BBMD":
+
+            def adjust_negociador(x):
+                if not x or x.strip() == "":
+                    return "Iasmin Barbosa"
+                elif x.strip().lower() == "franciele menezes":
+                    return "Iasmin Barbosa"
+                else:
+                    return x
+
+            negociador_series = negociador_series.apply(adjust_negociador)
+        output_data["Negociador"] = negociador_series
 
         # E-mail
         email_raw_series = (
@@ -106,7 +121,8 @@ class PlanilhaTransformer:
                             escritorio_series = list(escritorio_series)
                             escritorio_series[idx] = found_escritorio
                             self.errors.append(
-                                f"Linha {idx}: Escritório preenchido via Ploomes - CNJ: '{cnj}' → '{found_escritorio}'"
+                                f"Linha {idx}: Escritório preenchido via Ploomes - "
+                                f"CNJ: '{cnj}' → '{found_escritorio}'"
                             )
 
         output_data["Escritório"] = pd.Series(escritorio_series)

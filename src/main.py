@@ -93,7 +93,8 @@ def main() -> int:
         colorize=True,
         format=(
             "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | "
-            "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
+            "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
+            "<level>{message}</level>"
         ),
     )
 
@@ -155,7 +156,9 @@ def main() -> int:
         ploomes_client = PloomesClient(args.api_token)
 
     transformer = PlanilhaTransformer(
-        ploomes_client=ploomes_client, deletion_stage_id=args.deletion_stage_id
+        ploomes_client=ploomes_client,
+        deletion_stage_id=args.deletion_stage_id,
+        mesa=mesa,
     )
     df_out = transformer.transform(df)
 
