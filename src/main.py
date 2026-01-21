@@ -1,13 +1,19 @@
 import argparse
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 import shutil
+from dotenv import load_dotenv
 from loguru import logger
 
 from transformer import PlanilhaTransformer
+from ploomes_client import PloomesClient
+
+# Carregar variáveis de ambiente do arquivo .env
+load_dotenv()
 from db_updater import DatabaseUpdater, DatabaseUpdateError
 
 # Adiciona o diretório src ao path para imports
@@ -48,6 +54,16 @@ def main() -> int:
         "--update-db",
         action="store_true",
         help="Atualiza mapeamentos de escritórios e negociadores do banco de dados",
+    )
+    parser.add_argument(
+        "--api-token",
+        default=os.getenv("PLOOMES_API_TOKEN"),
+        help="Token da API Ploomes (padrão: PLOOMES_API_TOKEN do .env)",
+    )
+    parser.add_argument(
+        "--deletion-stage-id",
+        type=int,
+        help="ID do estágio de deleção na Ploomes",
     )
     args = parser.parse_args()
 
@@ -133,7 +149,14 @@ def main() -> int:
         logger.error(f"Erro ao ler planilha: {e}")
         sys.exit(1)
 
-    transformer = PlanilhaTransformer()
+    # Inicializar cliente Ploomes se token fornecido
+    ploomes_client = None
+    if args.api_token and args.deletion_stage_id:
+        ploomes_client = PloomesClient(args.api_token)
+
+    transformer = PlanilhaTransformer(
+        ploomes_client=ploomes_client, deletion_stage_id=args.deletion_stage_id
+    )
     df_out = transformer.transform(df)
 
     logger.info(f"Salvando planilha de saída: {output_path}")
