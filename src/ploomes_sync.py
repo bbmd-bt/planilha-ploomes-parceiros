@@ -116,6 +116,20 @@ class PloomesSync:
                 report.failed_movements += 1
             report.results.append(result)
 
+        # Mover deals de origem para todos os negócios no target_stage
+        try:
+            all_target_deals = self.client.search_deals_by_stage(self.target_stage_id)
+            if all_target_deals:
+                logger.info(
+                    f"Movendo deals de origem para {len(all_target_deals)} negócios no target_stage"
+                )
+                for deal in all_target_deals:
+                    self._move_origin_deal(deal)
+        except Exception as e:
+            logger.error(
+                f"Erro ao mover deals de origem para negócios no target_stage: {e}"
+            )
+
         # Agora, deletar negócios no estágio de deleção que não estão na lista de CNJs preservados
         deleted_count = 0
         skipped_deletions = 0
@@ -231,9 +245,7 @@ class PloomesSync:
                     else:
                         logger.error(f"CNJ {cnj}: falha ao mover negócio {deal_id}")
 
-                    # Se moveu com sucesso, mover também o deal de origem
                     if move_success:
-                        self._move_origin_deal(deal)
                         moved_any = True
 
             result.moved_successfully = moved_any
