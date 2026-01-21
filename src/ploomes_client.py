@@ -189,10 +189,25 @@ class PloomesClient:
             if isinstance(data, dict) and "value" in data:
                 items = data.get("value") or []
                 if items:
-                    return items[0]
+                    deal = items[0]
+                    if deal.get("Id") == deal_id:
+                        return deal
+                    else:
+                        self.logger.warning(
+                            f"API returned wrong deal: requested {deal_id}, got {deal.get('Id')}"
+                        )
+                        return None
                 return None
 
-            return data
+            # Retorno direto
+            if isinstance(data, dict) and data.get("Id") == deal_id:
+                return data
+            else:
+                got_id = data.get("Id") if isinstance(data, dict) else "non-dict"
+                self.logger.warning(
+                    f"API returned wrong deal: requested {deal_id}, got {got_id}"
+                )
+                return None
         except PloomesAPIError:
             return None
 
