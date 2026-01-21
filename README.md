@@ -231,11 +231,31 @@ python src/main.py --input "caminho/entrada.xlsx" --mesa "Nome da Mesa" --output
 ### Opções de Comando
 
 - `--input`: Caminho para o arquivo de entrada (.xlsx)
-- `--mesa`: Nome da mesa referente aos leads (obrigatório)
+- `--mesa`: Nome da mesa referente aos leads (obrigatório). Mesas suportadas: `btblue`, `2bativos`, `bbmd`
 - `--output`: Caminho para o arquivo de saída (.xlsx, opcional)
 - `--log`: Caminho para o arquivo de log (opcional)
 - `--log-level`: Nível de log (DEBUG, INFO, WARNING, ERROR, padrão: INFO)
 - `--update-db`: Atualiza mapeamentos de escritórios e negociadores do banco de dados (opcional)
+- `--deletion-stage-id`: ID do estágio de deleção na Ploomes (opcional). Se não informado, será detectado automaticamente pela mesa
+
+### Detecção Automática de Estágio de Deleção
+
+O script detecta automaticamente o `deletion_stage_id` com base na mesa fornecida. Você **não precisa mais** fornecer esse parâmetro manualmente:
+
+```bash
+# Antes (necessário fornecer --deletion-stage-id)
+python src/main.py --input "entrada.xlsx" --mesa btblue --deletion-stage-id 110351653
+
+# Agora (automático)
+python src/main.py --input "entrada.xlsx" --mesa btblue
+```
+
+**Mapeamento automático:**
+- `btblue` → deletion_stage_id: `110351653`
+- `2bativos` → deletion_stage_id: `110351790`
+- `bbmd` → deletion_stage_id: `110351792`
+
+Se necessário, você ainda pode sobrescrever o valor automático fornecendo `--deletion-stage-id` manualmente.
 
 ### Extração de Escritórios
 

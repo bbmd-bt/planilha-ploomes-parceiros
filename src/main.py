@@ -11,6 +11,7 @@ from loguru import logger
 
 from data_processing.transformer import PlanilhaTransformer
 from clients.ploomes_client import PloomesClient
+from config import MESA_DELETION_STAGE_MAP
 
 # Carregar variáveis de ambiente do arquivo .env
 load_dotenv()
@@ -63,9 +64,25 @@ def main() -> int:
     parser.add_argument(
         "--deletion-stage-id",
         type=int,
-        help="ID do estágio de deleção na Ploomes",
+        help="ID do estágio de deleção na Ploomes (opcional, detectado automaticamente pela mesa)",
     )
     args = parser.parse_args()
+
+    # Determinar deletion_stage_id automaticamente baseado na mesa, se não fornecido
+    if not args.deletion_stage_id:
+        mesa_lower = args.mesa.lower()
+        if mesa_lower in MESA_DELETION_STAGE_MAP:
+            args.deletion_stage_id = MESA_DELETION_STAGE_MAP[mesa_lower]
+            logger.debug(
+                f"Deletion stage ID detectado automaticamente: {args.deletion_stage_id} para mesa '{args.mesa}'"
+            )
+        else:
+            logger.warning(
+                f"Mesa '{args.mesa}' não encontrada no mapeamento. Deletion stage ID não será utilizado."
+            )
+            logger.debug(
+                f"Mesas disponíveis: {', '.join(MESA_DELETION_STAGE_MAP.keys())}"
+            )
 
     # Configure loguru
     logger.remove()  # Remove default handler
@@ -151,9 +168,13 @@ def main() -> int:
         sys.exit(1)
 
     # Inicializar cliente Ploomes se token fornecido
+    # O deletion_stage_id já foi determinado automaticamente acima se necessário
     ploomes_client = None
     if args.api_token and args.deletion_stage_id:
         ploomes_client = PloomesClient(args.api_token)
+        logger.info(
+            f"Cliente Ploomes inicializado para mesa '{args.mesa}' (deletion stage ID: {args.deletion_stage_id})"
+        )
 
     transformer = PlanilhaTransformer(
         ploomes_client=ploomes_client,
