@@ -91,43 +91,51 @@ class PloomesSync:
         self.cnj_list = set(cnj_list)  # Store for later use in deletion
 
         # Verificar se o estágio de deleção está vazio
+        deletion_stage_empty = False
         try:
             deletion_deals = self.client.search_deals_by_stage(self.deletion_stage_id)
             if not deletion_deals:
-                logger.info(
-                    f"Estágio de deleção {self.deletion_stage_id} está vazio. "
-                    "Pulando processamento de CNJs e deleção."
-                )
-                return report
+                deletion_stage_empty = True
+                logger.info(f"Estágio de deleção {self.deletion_stage_id} está vazio.")
         except Exception as e:
             logger.error(f"Erro ao verificar estágio de deleção: {e}")
-            return report
+            deletion_stage_empty = True  # Treat as empty to skip
 
-        # Usar paralelização para processar CNJs
-        results = []
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            # Submeter tarefas
-            future_to_cnj = {
-                executor.submit(self._process_single_cnj, cnj): cnj for cnj in cnj_list
-            }
+        # Processar CNJs apenas se o estágio de deleção não estiver vazio
+        if not deletion_stage_empty:
+            # Usar paralelização para processar CNJs
+            results = []
+            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                # Submeter tarefas
+                future_to_cnj = {
+                    executor.submit(self._process_single_cnj, cnj): cnj
+                    for cnj in cnj_list
+                }
 
-            # Coletar resultados
-            for future in as_completed(future_to_cnj):
-                cnj = future_to_cnj[future]
-                try:
-                    result = future.result()
-                    results.append(result)
-                except Exception as e:
-                    logger.error(f"Erro ao processar CNJ {cnj}: {e}")
-                    results.append(ProcessingResult(cnj=cnj, error_message=str(e)))
+                # Coletar resultados
+                for future in as_completed(future_to_cnj):
+                    cnj = future_to_cnj[future]
+                    try:
+                        result = future.result()
+                        results.append(result)
+                    except Exception as e:
+                        logger.error(f"Erro ao processar CNJ {cnj}: {e}")
+                        results.append(ProcessingResult(cnj=cnj, error_message=str(e)))
 
-        # Agregar resultados
-        for result in results:
-            if result.moved_successfully:
-                report.successfully_moved += 1
-            else:
-                report.failed_movements += 1
-            report.results.append(result)
+            # Agregar resultados
+            for result in results:
+                if result.moved_successfully:
+                    report.successfully_moved += 1
+                else:
+                    report.failed_movements += 1
+                report.results.append(result)
+        else:
+            logger.info(
+                "Pulando processamento de CNJs pois estágio de deleção está vazio."
+            )
+            results = []  # No results
+
+        # Mover deals de origem para todos os negócios no target_stage
 
         # Mover deals de origem para todos os negócios no target_stage
         try:
@@ -144,50 +152,57 @@ class PloomesSync:
             )
 
         # Agora, deletar negócios no estágio de deleção que não estão na lista de CNJs preservados
-        deleted_count = 0
-        skipped_deletions = 0
+        if not deletion_stage_empty:
+            deleted_count = 0
+            skipped_deletions = 0
 
-        try:
-            all_deletion_deals = self.client.search_deals_by_stage(
-                self.deletion_stage_id
-            )
-            if all_deletion_deals:
-                logger.info(
-                    f"Encontrados {len(all_deletion_deals)} negócios no estágio de deleção para verificar deleção"
+            try:
+                all_deletion_deals = self.client.search_deals_by_stage(
+                    self.deletion_stage_id
                 )
-                for deal in all_deletion_deals:
-                    deal_id = deal.get("Id")
+                if all_deletion_deals:
+                    logger.info(
+                        f"Encontrados {len(all_deletion_deals)} negócios no estágio de deleção para verificar deleção"
+                    )
+                    for deal in all_deletion_deals:
+                        deal_id = deal.get("Id")
 
-                    if not deal_id:
-                        skipped_deletions += 1
-                        logger.warning("Negócio sem ID encontrado, pulando")
-                        continue
+                        if not deal_id:
+                            skipped_deletions += 1
+                            logger.warning("Negócio sem ID encontrado, pulando")
+                            continue
 
-                    cnj_label = self._extract_cnj_from_deal(deal) or "sem CNJ"
+                        cnj_label = self._extract_cnj_from_deal(deal) or "sem CNJ"
 
-                    # Skip deletion if CNJ is in the preserved list
-                    if cnj_label in self.cnj_list:
-                        logger.info(
-                            f"{cnj_label}: negócio {deal_id} preservado (CNJ na lista), pulando deleção"
-                        )
-                        continue
+                        # Skip deletion if CNJ is in the preserved list
+                        if cnj_label in self.cnj_list:
+                            logger.info(
+                                f"{cnj_label}: negócio {deal_id} preservado (CNJ na lista), pulando deleção"
+                            )
+                            continue
 
-                    if self.dry_run:
-                        logger.info(
-                            f"[DRY-RUN] {cnj_label}: negócio {deal_id} seria deletado"
-                        )
-                        deleted_count += 1
-                    elif self.client.delete_deal(deal_id):
-                        deleted_count += 1
-                        logger.info(f"{cnj_label}: negócio {deal_id} deletado")
-                    else:
-                        skipped_deletions += 1
-                        logger.error(f"{cnj_label}: falha ao deletar negócio {deal_id}")
-        except Exception as e:
-            logger.error(f"Erro ao deletar negócios no estágio de deleção: {e}")
+                        if self.dry_run:
+                            logger.info(
+                                f"[DRY-RUN] {cnj_label}: negócio {deal_id} seria deletado"
+                            )
+                            deleted_count += 1
+                        elif self.client.delete_deal(deal_id):
+                            deleted_count += 1
+                            logger.info(f"{cnj_label}: negócio {deal_id} deletado")
+                        else:
+                            skipped_deletions += 1
+                            logger.error(
+                                f"{cnj_label}: falha ao deletar negócio {deal_id}"
+                            )
+            except Exception as e:
+                logger.error(f"Erro ao deletar negócios no estágio de deleção: {e}")
 
-        report.successfully_deleted = deleted_count
-        report.skipped_deletions = skipped_deletions
+            report.successfully_deleted = deleted_count
+            report.skipped_deletions = skipped_deletions
+        else:
+            logger.info("Pulando deleção pois estágio de deleção está vazio.")
+            report.successfully_deleted = 0
+            report.skipped_deletions = 0
 
         logger.info(
             f"Processamento concluído: {report.successfully_moved} movidos, {report.failed_movements} falhas, "
