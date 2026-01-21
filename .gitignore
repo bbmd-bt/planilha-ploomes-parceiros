@@ -143,3 +143,4 @@ errors/
 logs/
 screenshots/
 .env
+.github/
