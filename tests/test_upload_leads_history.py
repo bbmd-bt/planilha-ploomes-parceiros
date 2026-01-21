@@ -75,8 +75,16 @@ class TestLeadsHistoryUploader:
     def test_load_success_leads_valid(self):
         """Testa carregamento de planilha de sucesso válida."""
         data = [
-            {"CNJ": "12345678901234567890", "Negociador": "João Silva"},
-            {"CNJ": "09876543210987654321", "Negociador": "Maria Santos"},
+            {
+                "CNJ": "12345678901234567890",
+                "Negociador": "João Silva",
+                "Escritório": "Escritório ABC",
+            },
+            {
+                "CNJ": "09876543210987654321",
+                "Negociador": "Maria Santos",
+                "Escritório": "Escritório XYZ",
+            },
         ]
         file_path = self.create_test_excel(data, "success_test.xlsx")
 
@@ -85,9 +93,10 @@ class TestLeadsHistoryUploader:
             df = uploader.load_success_leads()
 
             assert len(df) == 2
-            assert list(df.columns) == ["CNJ", "Negociador"]
+            assert "Escritório" in df.columns
             assert str(df.iloc[0]["CNJ"]) == "12345678901234567890"
             assert df.iloc[0]["Negociador"] == "João Silva"
+            assert df.iloc[0]["Escritório"] == "Escritório ABC"
         finally:
             os.remove(file_path)
 
@@ -110,6 +119,7 @@ class TestLeadsHistoryUploader:
                 "CNJ": "12345678901234567890",
                 "Negociador": "João Silva",
                 "Erro": "Erro de validação",
+                "Escritório": "Escritório ABC",
             }
         ]
         file_path = self.create_test_excel(data, "errors_test.xlsx")
@@ -121,8 +131,9 @@ class TestLeadsHistoryUploader:
             df = uploader.load_error_leads()
 
             assert len(df) == 1
-            assert list(df.columns) == ["CNJ", "Negociador", "Erro"]
+            assert "Escritório" in df.columns
             assert df.iloc[0]["Erro"] == "Erro de validação"
+            assert df.iloc[0]["Escritório"] == "Escritório ABC"
         finally:
             os.remove(file_path)
 
@@ -130,11 +141,20 @@ class TestLeadsHistoryUploader:
         """Testa processamento completo dos leads."""
         # Criar planilha de sucesso
         success_data = [
-            {"CNJ": "11111111111111111111", "Negociador": "João Silva"},
-            {"CNJ": "22222222222222222222", "Negociador": "Maria Santos"},
+            {
+                "CNJ": "11111111111111111111",
+                "Negociador": "João Silva",
+                "Escritório": "Escritório A",
+            },
+            {
+                "CNJ": "22222222222222222222",
+                "Negociador": "Maria Santos",
+                "Escritório": "Escritório B",
+            },
             {
                 "CNJ": "33333333333333333333",
                 "Negociador": "Pedro Costa",
+                "Escritório": "Escritório C",
             },  # Este terá erro
         ]
         success_file = self.create_test_excel(success_data, "success_process.xlsx")
@@ -145,6 +165,7 @@ class TestLeadsHistoryUploader:
                 "CNJ": "33333333333333333333",
                 "Negociador": "Pedro Costa",
                 "Erro": "CNJ inválido",
+                "Escritório": "Escritório C",
             }
         ]
         error_file = self.create_test_excel(error_data, "errors_process.xlsx")
@@ -161,6 +182,7 @@ class TestLeadsHistoryUploader:
                 "Test Mesa",
                 False,
                 None,
+                "Escritório A",
             )
             assert success_records[1] == (
                 "22222222222222222222",
@@ -168,6 +190,7 @@ class TestLeadsHistoryUploader:
                 "Test Mesa",
                 False,
                 None,
+                "Escritório B",
             )
 
             # Verificar leads com erro (1 registro)
@@ -178,6 +201,7 @@ class TestLeadsHistoryUploader:
                 "Test Mesa",
                 True,
                 "CNJ inválido",
+                "Escritório C",
             )
 
         finally:
@@ -194,8 +218,10 @@ class TestLeadsHistoryUploader:
             "dummy_success.xlsx", "dummy_errors.xlsx", "Test Mesa"
         )
 
-        success_records = [("111", "João", "Test Mesa", False, None)]
-        error_records = [("222", "Maria", "Test Mesa", True, "Erro teste")]
+        success_records = [("111", "João", "Test Mesa", False, None, "Escritório A")]
+        error_records = [
+            ("222", "Maria", "Test Mesa", True, "Erro teste", "Escritório B")
+        ]
 
         uploader.upload_to_database(success_records, error_records)
 
@@ -208,5 +234,6 @@ class TestLeadsHistoryUploader:
         data = call_args[0][1]
 
         assert "INSERT INTO leads_parceiros_upload_history" in query
+        assert "escritorio" in query
         assert "ON CONFLICT (cnj)" in query
         assert len(data) == 2

@@ -106,11 +106,13 @@ Este script faz upload do histórico de leads bem-sucedidos e com erro para uma 
 
 ```sql
 CREATE TABLE leads_parceiros_upload_history (
-    cnj VARCHAR(50) PRIMARY KEY,
+    id INTEGER PRIMARY KEY,
+    cnj VARCHAR(255) NOT NULL UNIQUE,
     negociador VARCHAR(255) NOT NULL,
-    mesa VARCHAR(100) NOT NULL,
-    erro BOOLEAN NOT NULL DEFAULT FALSE,
-    mensagem_erro TEXT,
+    mesa VARCHAR(255),
+    error BOOLEAN DEFAULT FALSE,
+    error_message TEXT,
+    escritorio TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -164,11 +166,17 @@ Colunas obrigatórias:
 - `CNJ`: Número do processo judicial
 - `Negociador` ou `Responsável`: Nome do negociador responsável
 
+Colunas opcionais:
+- `Escritório`: Nome do escritório responsável
+
 #### Planilha de Erros
 Colunas obrigatórias:
 - `CNJ`: Número do processo judicial
 - `Negociador` ou `Responsável`: Nome do negociador responsável
 - `Erro`: Mensagem de erro da importação
+
+Colunas opcionais:
+- `Escritório`: Nome do escritório responsável
 
 ### Configuração do Banco
 

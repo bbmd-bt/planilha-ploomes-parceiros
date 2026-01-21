@@ -180,6 +180,7 @@ class LeadsHistoryUploader:
         for _, row in success_df.iterrows():
             cnj = str(row.get("CNJ", "")).strip()
             negociador = str(row.get("Negociador", "")).strip()
+            escritorio = str(row.get("Escritório", "")).strip()
 
             if not cnj or not negociador:
                 logger.warning(
@@ -189,13 +190,16 @@ class LeadsHistoryUploader:
 
             # Se CNJ não está na lista de erros, é um lead bem-sucedido
             if cnj not in error_cnjs:
-                success_records.append((cnj, negociador, self.mesa, False, None))
+                success_records.append(
+                    (cnj, negociador, self.mesa, False, None, escritorio or None)
+                )
 
         # Processar leads com erro
         for _, row in error_df.iterrows():
             cnj = str(row.get("CNJ", "")).strip()
             negociador = str(row.get("Negociador", "")).strip()
             error_message = str(row.get("Erro", "")).strip()
+            escritorio = str(row.get("Escritório", "")).strip()
 
             if not cnj or not negociador:
                 logger.warning(
@@ -204,7 +208,14 @@ class LeadsHistoryUploader:
                 continue
 
             error_records.append(
-                (cnj, negociador, self.mesa, True, error_message or None)
+                (
+                    cnj,
+                    negociador,
+                    self.mesa,
+                    True,
+                    error_message or None,
+                    escritorio or None,
+                )
             )
 
         logger.info(
@@ -226,14 +237,15 @@ class LeadsHistoryUploader:
         # Query de UPSERT usando execute_values
         # O formato é: (col1, col2, col3, ...) VALUES %s
         upsert_query = """
-            INSERT INTO leads_parceiros_upload_history (cnj, negociador, mesa, error, error_message)
+            INSERT INTO leads_parceiros_upload_history (cnj, negociador, mesa, error, error_message, escritorio)
             VALUES %s
             ON CONFLICT (cnj)
             DO UPDATE SET
                 negociador = EXCLUDED.negociador,
                 mesa = EXCLUDED.mesa,
                 error = EXCLUDED.error,
-                error_message = EXCLUDED.error_message
+                error_message = EXCLUDED.error_message,
+                escritorio = EXCLUDED.escritorio
         """
 
         try:
