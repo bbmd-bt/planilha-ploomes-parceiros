@@ -6,7 +6,7 @@ incluindo autenticação via token e busca de leads/pendências.
 """
 
 import requests
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from loguru import logger
 
 
@@ -174,11 +174,11 @@ class ParceirosClient:
                 "Content-Type": "application/json",
             }
 
-            params = {"cnj": cnj, "tamanho_pagina": 10}
+            params: Dict[str, Any] = {"cnj": cnj, "tamanho_pagina": 10}  # type: ignore[assignment]
 
-            response = self.session.get(  # type: ignore[arg-type]
-                leads_url, headers=headers, params=params, timeout=self.timeout
-            )
+            response = self.session.get(  # type: ignore
+                leads_url, headers=headers, params=params, timeout=self.timeout  # type: ignore[arg-type]
+            )  # type: ignore[arg-type]
 
             if response.status_code != 200:
                 logger.error(

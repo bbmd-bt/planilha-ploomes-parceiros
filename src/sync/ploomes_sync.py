@@ -150,12 +150,12 @@ class PloomesSync:
                 )
                 for deal in all_target_deals:
                     # Extrair CNJ do deal para obter a descrição do erro
-                    cnj = self._extract_cnj_from_deal(deal)
+                    deal_cnj: Optional[str] = self._extract_cnj_from_deal(deal)  # type: ignore[assignment]
                     error_description = None
-                    if cnj:
-                        error_description = self.cnj_errors.get(cnj)  # type: ignore[assignment]
+                    if deal_cnj:
+                        error_description = self.cnj_errors.get(deal_cnj)  # type: ignore[assignment]
                         logger.debug(
-                            f"Deal {deal.get('Id')}: CNJ='{cnj}', error_description='{error_description}'"
+                            f"Deal {deal.get('Id')}: CNJ='{deal_cnj}', error_description='{error_description}'"
                         )
                     else:
                         logger.debug(f"Deal {deal.get('Id')}: CNJ não encontrado")
@@ -436,9 +436,20 @@ class PloomesSync:
             )
 
             # Se houver descrição de erro, verificar se já tem Interaction Record
-            logger.debug(
-                f"Verificando interaction record para deal {origin_deal_id}: error_description='{error_description}', dry_run={self.dry_run}"
+            debug_prefix = (
+                "Verificando interaction record para deal "  # noqa: E501
+                + str(origin_deal_id)
+                + ": "
             )
+            debug_msg = (
+                debug_prefix
+                + "error_description='"
+                + str(error_description)
+                + "', "
+                + "dry_run="
+                + str(self.dry_run)
+            )
+            logger.debug(debug_msg)
             if error_description and not self.dry_run:
                 try:
                     # Verificar se o deal já possui LastInteractionRecordId
