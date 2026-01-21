@@ -180,7 +180,8 @@ class PloomesClient:
             return None
         try:
             response = self._make_request(
-                "GET", f"Deals({deal_id})?$expand=OtherProperties"
+                "GET",
+                f"Deals({deal_id})?$select=Id,Title,StageId,PipelineId,OriginDealId&$expand=OtherProperties",
             )
             data = response.json()
 
