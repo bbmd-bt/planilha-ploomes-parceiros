@@ -5,7 +5,7 @@ from typing import Optional
 
 import Levenshtein
 
-from validator import is_valid_email
+from .validator import is_valid_email
 
 
 # Cache para escritórios carregados

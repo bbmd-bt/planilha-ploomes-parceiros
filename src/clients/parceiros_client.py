@@ -176,7 +176,7 @@ class ParceirosClient:
 
             params = {"cnj": cnj, "tamanho_pagina": 10}
 
-            response = self.session.get(
+            response = self.session.get(  # type: ignore[arg-type]
                 leads_url, headers=headers, params=params, timeout=self.timeout
             )
 

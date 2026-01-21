@@ -25,7 +25,7 @@ load_dotenv()
 # Adicionar o diretório pai ao sys.path para imports absolutos funcionarem
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.ploomes_client import PloomesClient
+from src.clients.ploomes_client import PloomesClient
 
 
 def setup_logging(log_level: str = "INFO") -> logging.Logger:

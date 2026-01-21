@@ -5,8 +5,8 @@ Testes para o módulo de sincronização Ploomes.
 import pytest
 import pandas as pd
 from unittest.mock import Mock, patch
-from src.ploomes_sync import PloomesSync, SyncReport
-from src.ploomes_client import PloomesClient
+from src.sync.ploomes_sync import PloomesSync, SyncReport
+from src.clients.ploomes_client import PloomesClient
 
 
 class TestPloomesSync:
@@ -125,8 +125,8 @@ class TestPloomesSync:
         # successfully_deleted conta apenas deleções no deletion_stage após preservação
         assert report.skipped_deletions == 0
 
-    @patch("src.ploomes_sync.pd.DataFrame.to_excel")
-    @patch("src.ploomes_sync.pd.ExcelWriter")
+    @patch("src.sync.ploomes_sync.pd.DataFrame.to_excel")
+    @patch("src.sync.ploomes_sync.pd.ExcelWriter")
     def test_generate_report_excel(self, mock_writer, mock_to_excel, sync):
         """Testa geração de relatório Excel."""
         # Cria relatório de teste

@@ -9,7 +9,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, cast
+from typing import Dict, List, Optional
 import re
 
 # Adicionar o diretório pai ao sys.path para imports funcionarem
@@ -18,8 +18,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import pandas as pd
 from loguru import logger
 
-from src.ploomes_client import PloomesClient
-from src.parceiros_client import ParceirosClient
+from src.clients.ploomes_client import PloomesClient
+from src.clients.parceiros_client import ParceirosClient
 
 
 @dataclass
@@ -151,11 +151,9 @@ class PloomesSync:
                 for deal in all_target_deals:
                     # Extrair CNJ do deal para obter a descrição do erro
                     cnj = self._extract_cnj_from_deal(deal)
-                    error_description: Optional[str] = None
+                    error_description = None
                     if cnj:
-                        error_description = cast(
-                            Optional[str], self.cnj_errors.get(cnj)
-                        )
+                        error_description = self.cnj_errors.get(cnj)  # type: ignore[assignment]
                     self._move_origin_deal(deal, error_description=error_description)
         except Exception as e:
             logger.error(

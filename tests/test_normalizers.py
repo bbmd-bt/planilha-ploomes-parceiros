@@ -4,14 +4,14 @@ import sys
 sys.path.insert(0, "src")
 
 import pandas as pd
-from normalizers import (
+from data_processing.normalizers import (
     normalize_cnj,
     normalize_phone,
     normalize_email,
     normalize_produto,
     extract_first_value,
 )
-from transformer import PlanilhaTransformer
+from data_processing.transformer import PlanilhaTransformer
 
 
 def test_normalize_cnj():

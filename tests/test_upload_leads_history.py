@@ -8,7 +8,7 @@ from unittest.mock import patch, MagicMock
 import tempfile
 import os
 
-from src.upload_leads_history import LeadsHistoryUploader, DatabaseConnection
+from src.upload.upload_leads_history import LeadsHistoryUploader, DatabaseConnection
 
 
 class TestDatabaseConnection:
@@ -208,7 +208,7 @@ class TestLeadsHistoryUploader:
             os.remove(success_file)
             os.remove(error_file)
 
-    @patch("src.upload_leads_history.DatabaseConnection")
+    @patch("src.upload.upload_leads_history.DatabaseConnection")
     def test_upload_to_database(self, mock_db_class):
         """Testa upload para o banco de dados."""
         mock_db = MagicMock()

@@ -1,7 +1,7 @@
 import sys
 
 sys.path.insert(0, "src")
-from validator import is_valid_cnj, is_valid_email, is_valid_phone
+from data_processing.validator import is_valid_cnj, is_valid_email, is_valid_phone
 
 
 def test_is_valid_cnj():

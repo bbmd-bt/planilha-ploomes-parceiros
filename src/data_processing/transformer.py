@@ -1,8 +1,14 @@
+import sys
+from pathlib import Path
+
+# Adicionar o diretório pai ao sys.path para imports funcionarem
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import pandas as pd
 from typing import Optional
 
-from mapping import map_negotiator
-from normalizers import (
+from utils.mapping import map_negotiator
+from .normalizers import (
     extract_first_value,
     normalize_cnj,
     normalize_email,

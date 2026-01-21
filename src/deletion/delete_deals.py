@@ -36,9 +36,9 @@ load_dotenv()
 # Adicionar o diretório pai ao sys.path para imports absolutos funcionarem
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.ploomes_client import PloomesClient
-from src.ploomes_sync import PloomesSync
-from src.parceiros_client import ParceirosClient
+from src.clients.ploomes_client import PloomesClient
+from src.sync.ploomes_sync import PloomesSync
+from src.clients.parceiros_client import ParceirosClient
 
 
 # Mapeamento de pipelines para estágios

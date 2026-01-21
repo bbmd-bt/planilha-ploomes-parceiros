@@ -145,7 +145,7 @@ class PloomesClient:
             return []
 
         # Normaliza o CNJ para o formato padrão NNNNNNN-DD.AAAA.J.TR.OOOO
-        from src.normalizers import normalize_cnj
+        from src.data_processing.normalizers import normalize_cnj
 
         cnj_normalized = normalize_cnj(cnj)
         if not cnj_normalized:
