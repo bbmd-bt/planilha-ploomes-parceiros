@@ -90,6 +90,19 @@ class PloomesSync:
 
         self.cnj_list = set(cnj_list)  # Store for later use in deletion
 
+        # Verificar se o estágio de deleção está vazio
+        try:
+            deletion_deals = self.client.search_deals_by_stage(self.deletion_stage_id)
+            if not deletion_deals:
+                logger.info(
+                    f"Estágio de deleção {self.deletion_stage_id} está vazio. "
+                    "Pulando processamento de CNJs e deleção."
+                )
+                return report
+        except Exception as e:
+            logger.error(f"Erro ao verificar estágio de deleção: {e}")
+            return report
+
         # Usar paralelização para processar CNJs
         results = []
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
