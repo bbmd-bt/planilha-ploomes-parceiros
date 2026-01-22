@@ -15,7 +15,7 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 # Adiciona o diretório raiz ao path para imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -37,7 +37,8 @@ class InteractionValidationResult:
 
     deal_id: int
     cnj: Optional[str] = None
-    had_interaction: bool = False
+    had_correct_interaction: bool = False
+    had_wrong_interaction: bool = False
     interaction_created: bool = False
     last_interaction_updated: bool = False
     error_message: Optional[str] = None
@@ -48,7 +49,8 @@ class InteractionValidationReport:
     """Relatório consolidado da validação de interactions."""
 
     total_deals: int = 0
-    deals_with_interaction: int = 0
+    deals_with_correct_interaction: int = 0
+    deals_with_wrong_interaction: int = 0
     deals_without_interaction: int = 0
     interactions_created: int = 0
     last_interaction_updated: int = 0
@@ -154,41 +156,62 @@ class InteractionValidator:
 
         return None
 
-    def _interaction_exists_for_error(self, deal_id: int, error_desc: str) -> bool:
+    def _check_interaction_status(
+        self, deal_id: int, error_desc: str
+    ) -> Tuple[bool, bool]:
         """
-        Verifica se já existe um Interaction Record com o erro específico.
+        Verifica o status da interaction para um negócio.
 
         Args:
             deal_id: ID do negócio
             error_desc: Descrição do erro a buscar
 
         Returns:
-            True se a interação com esse erro já existe
+            Tupla (has_correct_interaction, has_wrong_interaction)
         """
         if not error_desc:
-            return False
+            return False, False
 
         try:
-            # Buscar deal com suas interações (via OtherProperties)
+            # Buscar deal para obter LastInteractionRecordId
             deal = self.client.get_deal_by_id(deal_id)
             if not deal:
-                return False
+                return False, False
 
             # Verificar LastInteractionRecordId
             last_interaction_id = deal.get("LastInteractionRecordId")
             if not last_interaction_id:
-                return False
+                return False, False
 
-            # Se tiver LastInteractionRecordId, assumir que já tem a interação
-            # (validação mais rigorosa seria buscar a interação e comparar conteúdo)
-            logger.debug(
-                f"Deal {deal_id} já possui LastInteractionRecordId: {last_interaction_id}"
+            # Buscar o conteúdo da interaction record
+            interaction_record = self.client.get_interaction_record_by_id(
+                last_interaction_id
             )
-            return True
+            if not interaction_record:
+                logger.debug(f"Interaction Record {last_interaction_id} não encontrado")
+                return False, False
+
+            # Comparar o conteúdo da interaction com a descrição do erro
+            interaction_content = interaction_record.get("Content", "").strip()
+            error_desc_stripped = error_desc.strip()
+
+            if interaction_content == error_desc_stripped:
+                logger.debug(
+                    f"Deal {deal_id} já possui Interaction Record correto "
+                    f"(ID: {last_interaction_id}, conteúdo corresponde)"
+                )
+                return True, False
+            else:
+                logger.debug(
+                    f"Deal {deal_id} possui Interaction Record (ID: {last_interaction_id}), "
+                    f"mas conteúdo não corresponde. Conteúdo atual: '{interaction_content[:100]}...', "
+                    f"Esperado: '{error_desc_stripped[:100]}...'"
+                )
+                return False, True
 
         except Exception as e:
             logger.warning(f"Erro ao verificar interaction para deal {deal_id}: {e}")
-            return False
+            return False, False
 
     def validate_interactions_in_stage(
         self, stage_id: int
@@ -222,8 +245,10 @@ class InteractionValidator:
                 # Atualizar contadores
                 if result.error_message:
                     report.errors += 1
-                elif result.had_interaction:
-                    report.deals_with_interaction += 1
+                elif result.had_correct_interaction:
+                    report.deals_with_correct_interaction += 1
+                elif result.had_wrong_interaction:
+                    report.deals_with_wrong_interaction += 1
                 else:
                     report.deals_without_interaction += 1
                     if result.interaction_created:
@@ -272,13 +297,22 @@ class InteractionValidator:
                 )
                 return result
 
-            # Verificar se já existe interaction com esse erro
-            if self._interaction_exists_for_error(deal_id, error_desc):
-                result.had_interaction = True
+            # Verificar status da interaction
+            has_correct, has_wrong = self._check_interaction_status(deal_id, error_desc)
+
+            if has_correct:
+                result.had_correct_interaction = True
                 logger.info(
-                    f"Deal {deal_id} (CNJ: {cnj}): Já possui interaction record"
+                    f"Deal {deal_id} (CNJ: {cnj}): Já possui interaction record correto"
                 )
                 return result
+
+            if has_wrong:
+                result.had_wrong_interaction = True
+                logger.info(
+                    f"Deal {deal_id} (CNJ: {cnj}): Possui interaction record com conteúdo incorreto, será atualizado"
+                )
+                # Continua para criar nova interaction
 
             # Criar interaction record
             interaction_id = self.client.create_interaction_record(deal_id, error_desc)
@@ -328,8 +362,12 @@ class InteractionValidator:
             results_data = {
                 "Deal ID": [r.deal_id for r in report.results],
                 "CNJ": [r.cnj or "N/A" for r in report.results],
-                "Tinha Interaction": [
-                    "Sim" if r.had_interaction else "Não" for r in report.results
+                "Tinha Interaction Correta": [
+                    "Sim" if r.had_correct_interaction else "Não"
+                    for r in report.results
+                ],
+                "Tinha Interaction Incorreta": [
+                    "Sim" if r.had_wrong_interaction else "Não" for r in report.results
                 ],
                 "Interaction Criada": [
                     "Sim" if r.interaction_created else "Não" for r in report.results
@@ -346,7 +384,8 @@ class InteractionValidator:
             stats_data = {
                 "Métrica": [
                     "Total de Negócios",
-                    "Com Interaction",
+                    "Com Interaction Correta",
+                    "Com Interaction Incorreta",
                     "Sem Interaction",
                     "Interactions Criadas",
                     "LastInteractionId Atualizados",
@@ -354,7 +393,8 @@ class InteractionValidator:
                 ],
                 "Valor": [
                     report.total_deals,
-                    report.deals_with_interaction,
+                    report.deals_with_correct_interaction,
+                    report.deals_with_wrong_interaction,
                     report.deals_without_interaction,
                     report.interactions_created,
                     report.last_interaction_updated,
@@ -488,7 +528,8 @@ def main() -> int:
         logger.info("RESUMO DA VALIDAÇÃO DE INTERACTIONS")
         logger.info("=" * 60)
         logger.info(f"Total de negócios: {report.total_deals}")
-        logger.info(f"Com interaction: {report.deals_with_interaction}")
+        logger.info(f"Com interaction correta: {report.deals_with_correct_interaction}")
+        logger.info(f"Com interaction incorreta: {report.deals_with_wrong_interaction}")
         logger.info(f"Sem interaction: {report.deals_without_interaction}")
         logger.info(f"Interactions criadas: {report.interactions_created}")
         logger.info(f"LastInteractionId atualizados: {report.last_interaction_updated}")

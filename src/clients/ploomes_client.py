@@ -537,3 +537,31 @@ class PloomesClient:
                 f"Erro ao atualizar LastInteractionRecordId do negócio {deal_id}: {e}"
             )
             return False
+
+    def get_interaction_record_by_id(
+        self, interaction_record_id: int
+    ) -> Optional[Dict]:
+        """
+        Busca um Interaction Record específico por ID.
+
+        Args:
+            interaction_record_id: ID do Interaction Record
+
+        Returns:
+            Dicionário com dados do Interaction Record ou None se não encontrado
+        """
+        # Validação do ID
+        if not isinstance(interaction_record_id, int) or interaction_record_id <= 0:
+            self.logger.warning(
+                f"ID de Interaction Record inválido: {interaction_record_id}"
+            )
+            return None
+
+        try:
+            response = self._make_request(
+                "GET", f"InteractionRecords({interaction_record_id})"
+            )
+            data = response.json()
+            return data
+        except PloomesAPIError:
+            return None

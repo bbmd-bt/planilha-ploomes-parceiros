@@ -93,12 +93,18 @@ class TestInteractionValidator:
             "Id": 123,
             "LastInteractionRecordId": 456,
         }
+        mock_client.get_interaction_record_by_id.return_value = {
+            "Id": 456,
+            "Content": "Erro teste",
+        }
 
         validator = InteractionValidator(mock_client, {})
-        result = validator._interaction_exists_for_error(123, "Erro teste")
+        has_correct, has_wrong = validator._check_interaction_status(123, "Erro teste")
 
-        assert result is True
+        assert has_correct is True
+        assert has_wrong is False
         mock_client.get_deal_by_id.assert_called_once_with(123)
+        mock_client.get_interaction_record_by_id.assert_called_once_with(456)
 
     def test_interaction_exists_for_error_false(self):
         """Testa quando interaction não existe."""
@@ -109,17 +115,39 @@ class TestInteractionValidator:
         }
 
         validator = InteractionValidator(mock_client, {})
-        result = validator._interaction_exists_for_error(123, "Erro teste")
+        has_correct, has_wrong = validator._check_interaction_status(123, "Erro teste")
 
-        assert result is False
+        assert has_correct is False
+        assert has_wrong is False
+
+    def test_interaction_exists_for_error_content_mismatch(self):
+        """Testa quando interaction existe mas conteúdo não corresponde."""
+        mock_client = Mock()
+        mock_client.get_deal_by_id.return_value = {
+            "Id": 123,
+            "LastInteractionRecordId": 456,
+        }
+        mock_client.get_interaction_record_by_id.return_value = {
+            "Id": 456,
+            "Content": "Erro diferente",
+        }
+
+        validator = InteractionValidator(mock_client, {})
+        has_correct, has_wrong = validator._check_interaction_status(123, "Erro teste")
+
+        assert has_correct is False
+        assert has_wrong is True
+        mock_client.get_deal_by_id.assert_called_once_with(123)
+        mock_client.get_interaction_record_by_id.assert_called_once_with(456)
 
     def test_interaction_exists_for_error_empty_description(self):
         """Testa com descrição de erro vazia."""
         mock_client = Mock()
         validator = InteractionValidator(mock_client, {})
-        result = validator._interaction_exists_for_error(123, "")
+        has_correct, has_wrong = validator._check_interaction_status(123, "")
 
-        assert result is False
+        assert has_correct is False
+        assert has_wrong is False
         mock_client.get_deal_by_id.assert_not_called()
 
     def test_validate_interactions_in_stage_no_deals(self):
@@ -210,7 +238,8 @@ class TestInteractionValidator:
 
         report = InteractionValidationReport(
             total_deals=2,
-            deals_with_interaction=1,
+            deals_with_correct_interaction=1,
+            deals_with_wrong_interaction=0,
             deals_without_interaction=1,
             interactions_created=1,
             last_interaction_updated=1,
@@ -221,14 +250,16 @@ class TestInteractionValidator:
             InteractionValidationResult(
                 deal_id=123,
                 cnj="1234567-89.0123.4.56.7890",
-                had_interaction=False,
+                had_correct_interaction=False,
+                had_wrong_interaction=False,
                 interaction_created=True,
                 last_interaction_updated=True,
             ),
             InteractionValidationResult(
                 deal_id=456,
                 cnj="9876543-21.9876.5.43.2109",
-                had_interaction=True,
+                had_correct_interaction=True,
+                had_wrong_interaction=False,
                 interaction_created=False,
                 last_interaction_updated=False,
             ),
