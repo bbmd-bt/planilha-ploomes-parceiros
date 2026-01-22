@@ -457,17 +457,26 @@ class PloomesClient:
             self.logger.warning("Conteúdo de interação vazio ou inválido")
             return None
 
-        payload = {"Content": content}
+        payload = {"Content": content, "DealId": deal_id}
 
         try:
-            response = self._make_request(
-                "POST", f"Deals({deal_id})/InteractionRecords", json=payload
-            )
+            response = self._make_request("POST", "InteractionRecords", json=payload)
             data = response.json()
 
             # Extrair o ID da interação criada
             if isinstance(data, dict):
-                interaction_id = data.get("Id")
+                # Verificar se é resposta OData com 'value'
+                if (
+                    "value" in data
+                    and isinstance(data["value"], list)
+                    and len(data["value"]) > 0
+                ):
+                    interaction_data = data["value"][0]
+                    interaction_id = interaction_data.get("Id")
+                else:
+                    # Resposta direta
+                    interaction_id = data.get("Id")
+
                 if interaction_id:
                     self.logger.info(
                         f"Interaction Record criado com sucesso para negócio {deal_id}: ID={interaction_id}"

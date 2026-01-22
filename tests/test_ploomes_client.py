@@ -129,8 +129,9 @@ class TestPloomesClient:
         # Verifica chamada da API
         args = mock_request.call_args
         assert args[0][0] == "POST"
-        assert "Deals(123)/InteractionRecords" in args[0][1]
+        assert "InteractionRecords" in args[0][1]
         assert args[1]["json"]["Content"] == "Test error message"
+        assert args[1]["json"]["DealId"] == 123
 
     @patch("src.clients.ploomes_client.requests.Session.request")
     def test_create_interaction_record_failure(self, mock_request, client):

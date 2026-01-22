@@ -473,19 +473,16 @@ class PloomesSync:
                                 f"{origin_deal_id} já no estágio correto: "
                                 f"ID={interaction_record_id}, Erro: {error_description}"
                             )
-                            # Fazer PATCH no deal com o ID da interação
+                            # Atualizar LastInteractionRecordId do deal
                             if self.client.update_deal_last_interaction_record(
                                 origin_deal_id, interaction_record_id
                             ):
                                 logger.info(
-                                    f"Deal de origem {origin_deal_id} "
-                                    f"atualizado com "
-                                    f"LastInteractionRecordId="
-                                    f"{interaction_record_id}"
+                                    f"LastInteractionRecordId atualizado para deal {origin_deal_id}"
                                 )
                             else:
                                 logger.warning(
-                                    f"Falha ao atualizar deal de origem {origin_deal_id} com LastInteractionRecordId"
+                                    f"Falha ao atualizar LastInteractionRecordId para deal {origin_deal_id}"
                                 )
                         else:
                             logger.warning(
@@ -509,18 +506,16 @@ class PloomesSync:
                         f"Interaction Record criado para deal de origem {origin_deal_id}: "
                         f"ID={interaction_record_id}, Erro: {error_description}"
                     )
-                    # Fazer PATCH no deal com o ID da interação
+                    # Atualizar LastInteractionRecordId do deal
                     if self.client.update_deal_last_interaction_record(
                         origin_deal_id, interaction_record_id
                     ):
                         logger.info(
-                            f"Deal de origem {origin_deal_id} atualizado com "
-                            f"LastInteractionRecordId={interaction_record_id}"
+                            f"LastInteractionRecordId atualizado para deal {origin_deal_id}"
                         )
                     else:
                         logger.warning(
-                            f"Falha ao atualizar deal de origem {origin_deal_id} com "
-                            "LastInteractionRecordId"
+                            f"Falha ao atualizar LastInteractionRecordId para deal {origin_deal_id}"
                         )
                 else:
                     logger.warning(
