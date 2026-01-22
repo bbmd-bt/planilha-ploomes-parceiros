@@ -19,6 +19,8 @@ from .normalizers import (
 
 
 class PlanilhaTransformer:
+    BBMD_OFFICE = "BERTOLINI E BERNARDES MADEIRA E DAMBROS ADVOGADOS ASSOCIADOS"
+
     def __init__(self, ploomes_client=None, deletion_stage_id=None, mesa=None):
         self.errors = []
         self.ploomes_client = ploomes_client
@@ -61,19 +63,9 @@ class PlanilhaTransformer:
             .fillna("")
             .apply(map_negotiator)
         )
-        # Se mesa for BBMD, substituir "Franciele Menezes" por "Iasmin Barbosa"
-        # e preencher vazios com "Iasmin Barbosa"
+        # Se mesa for BBMD, todos os negociadores devem ser "Iasmin Barbosa"
         if self.mesa and self.mesa.upper() == "BBMD":
-
-            def adjust_negociador(x):
-                if not x or x.strip() == "":
-                    return "Iasmin Barbosa"
-                elif x.strip().lower() == "franciele menezes":
-                    return "Iasmin Barbosa"
-                else:
-                    return x
-
-            negociador_series = negociador_series.apply(adjust_negociador)
+            negociador_series = pd.Series(["Iasmin Barbosa"] * len(negociador_series))
         output_data["Negociador"] = negociador_series
 
         # E-mail
@@ -126,6 +118,11 @@ class PlanilhaTransformer:
                             )
 
         output_data["Escritório"] = pd.Series(escritorio_series)
+        # Para BBMD, definir escritório fixo
+        if self.mesa and self.mesa.upper() == "BBMD":
+            output_data["Escritório"] = pd.Series(
+                [self.BBMD_OFFICE] * len(escritorio_series)
+            )
         # Adicionar erros para fuzzy matches
         for idx, original in enumerate(original_series):
             if original:
