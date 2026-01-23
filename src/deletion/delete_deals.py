@@ -273,6 +273,13 @@ python src/delete_deals.py \\
                 f"{report.skipped_deletions} deleções foram puladas devido a erros"
             )
 
+        # Deleta o arquivo de entrada ao final da execução
+        try:
+            os.remove(str(args.input))
+            logger.info(f"Arquivo de entrada deletado: {args.input}")
+        except Exception as e:
+            logger.warning(f"Erro ao deletar arquivo de entrada: {e}")
+
         return 0
 
     except Exception as e:

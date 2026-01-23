@@ -278,6 +278,8 @@ python src/main.py --input "entrada.xlsx" --mesa btblue
 
 Se necessário, você ainda pode sobrescrever o valor automático fornecendo `--deletion-stage-id` manualmente.
 
+**Nota**: O script deletará automaticamente o arquivo de entrada ao final da execução bem-sucedida.
+
 ### Extração de Escritórios
 
 Para extrair uma lista única de escritórios responsáveis de um arquivo CSV do Ploomes:
@@ -542,6 +544,8 @@ O script gera um relatório Excel com duas abas:
 3. **Filtragem**: Excluir da deleção os negócios cujos CNJs estão na lista de preservação
 4. **Deleção**: Deletar os negócios antigos filtrados
 5. **Preservação**: Os negócios do arquivo de entrada permanecem intocados na Ploomes
+
+**Nota**: O script deletará automaticamente o arquivo de entrada ao final da execução bem-sucedida.
 
 ## Testes
 

@@ -204,6 +204,13 @@ def main() -> int:
     if transformer.errors:
         logger.warning(f"Veja detalhes no log: {log_path}")
 
+    # Deleta o arquivo de entrada ao final da execução
+    try:
+        os.remove(str(args.input))
+        logger.info(f"Arquivo de entrada deletado: {args.input}")
+    except Exception as e:
+        logger.warning(f"Erro ao deletar arquivo de entrada: {e}")
+
     return 0
 
 
