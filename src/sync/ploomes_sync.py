@@ -44,6 +44,7 @@ class SyncReport:
     failed_movements: int = 0
     skipped_deletions: int = 0
     results: List[ProcessingResult] = field(default_factory=list)
+    origin_stages_used: set[int] = field(default_factory=set)
 
 
 class PloomesSync:
@@ -160,6 +161,11 @@ class PloomesSync:
                     else:
                         logger.debug(f"Deal {deal.get('Id')}: CNJ não encontrado")
                     self._move_origin_deal(deal, error_description=error_description)
+                    origin_stage = self._move_origin_deal(
+                        deal, error_description=error_description
+                    )
+                    if origin_stage is not None:
+                        report.origin_stages_used.add(origin_stage)
         except Exception as e:
             logger.error(
                 f"Erro ao mover deals de origem para negócios no target_stage: {e}"
@@ -364,16 +370,12 @@ class PloomesSync:
 
     def _move_origin_deal(
         self, deal: Dict, error_description: Optional[str] = None
-    ) -> None:
+    ) -> Optional[int]:
         """
         Move o deal de origem para o estágio configurado e adiciona Interaction Record com erro.
 
-        Se o deal já estiver no estágio correto, verifica se já possui o Interaction Record
-        e cria um novo se necessário.
-
-        Args:
-            deal: Dicionário representando o negócio que foi movido para target_stage
-            error_description: Descrição do erro a ser adicionada como Interaction Record
+        Returns:
+            O stage_id de origem se o deal foi movido ou já estava no stage correto, None caso contrário.
         """
         deal_id = deal.get("Id")
         origin_deal_id = self._extract_origin_deal_id_from_deal(deal)
@@ -382,21 +384,21 @@ class PloomesSync:
 
         if not origin_deal_id:
             logger.debug(f"Deal {deal_id}: OriginDealId não encontrado")
-            return
+            return None
 
         # Buscar o deal de origem para obter seu pipeline e estágio
         origin_deal = self.client.get_deal_by_id(origin_deal_id)
 
         if not origin_deal:
             logger.warning(f"Deal de origem {origin_deal_id} não encontrado")
-            return
+            return None
 
         origin_pipeline_id = origin_deal.get("PipelineId")
         origin_stage_id_current = origin_deal.get("StageId")
 
         if origin_pipeline_id is None:
             logger.warning(f"PipelineId not found in origin_deal {origin_deal_id}")
-            return
+            return None
 
         logger.debug(
             f"Deal de origem {origin_deal_id} encontrado: "
@@ -420,7 +422,7 @@ class PloomesSync:
             logger.debug(
                 f"Pipeline {origin_pipeline_id} do deal de origem não está na configuração"
             )
-            return
+            return None
 
         origin_stage_id = origin_config["stage_id"]
 
@@ -492,7 +494,7 @@ class PloomesSync:
                     logger.error(
                         f"Erro ao verificar/criar Interaction Record para deal de origem {origin_deal_id}: {e}"
                     )
-            return
+            return origin_stage_id
 
         # Se houver descrição de erro, criar Interaction Record antes de mover
         interaction_record_id = None
@@ -532,12 +534,15 @@ class PloomesSync:
                 f"[DRY-RUN] Movendo deal de origem {origin_deal_id} "
                 f"para estágio {origin_stage_id} no pipeline {origin_pipeline_id} (mesa '{mesa_name}')"
             )
+            return origin_stage_id
         elif self.client.update_deal_stage(origin_deal_id, origin_stage_id):
             logger.info(
                 f"Deal de origem {origin_deal_id} movido para estágio {origin_stage_id} (mesa '{mesa_name}')"
             )
+            return origin_stage_id
         else:
             logger.error(f"Falha ao mover deal de origem {origin_deal_id}")
+            return None
 
     def _extract_mesa_from_deal(self, deal: Dict) -> Optional[str]:
         """

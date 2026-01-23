@@ -480,6 +480,7 @@ Este projeto inclui um script independente para deletar negócios na Ploomes bas
 - Busca todos os negócios no estágio de deleção criados antes das 17:00 do dia atual
 - Exclui da deleção os negócios cujos CNJs estão na lista de preservação
 - Deleta os negócios antigos restantes
+- **Executa validação de interações para o estágio de destino**: Após mover os negócios preservados de volta ao estágio de origem, o script automaticamente executa o script de validação de interações (`validate_interactions.py`) para garantir que os negócios nos estágios de origem possuam as interaction records corretas. A validação é executada para cada estágio de origem único utilizado durante o processamento.
 - Gera relatório detalhado do processamento
 
 ### Pipelines Suportados

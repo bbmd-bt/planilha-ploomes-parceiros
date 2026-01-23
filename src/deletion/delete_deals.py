@@ -23,6 +23,7 @@ Uso:
 import argparse
 import logging
 import os
+import subprocess  # nosec B404
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -269,6 +270,44 @@ python src/delete_deals.py \\
         # Processa CNJs
         logger.info("Iniciando processamento...")
         report = sync.process_cnj_list(cnj_list)
+
+        # Executa validação de interações para os estágios de origem usados
+        if report.origin_stages_used:
+            logger.info(
+                f"Executando validação de interações para {len(report.origin_stages_used)} estágio(s) de origem..."
+            )
+            for stage_id in report.origin_stages_used:
+                logger.info(f"Validando interações para estágio {stage_id}...")
+                validate_cmd = [
+                    sys.executable,
+                    str(Path(__file__).parent / "validate_interactions.py"),
+                    "--input",
+                    str(args.input),
+                    "--stage-id",
+                    str(stage_id),
+                    "--api-token",
+                    args.api_token,
+                    "--log-level",
+                    args.log_level,
+                ]
+                if args.log:
+                    validate_cmd.extend(["--log", str(args.log)])
+
+                validate_result = subprocess.run(  # nosec B603
+                    validate_cmd, capture_output=True, text=True
+                )
+                if validate_result.returncode == 0:
+                    logger.info(
+                        f"Validação de interações para estágio {stage_id} executada com sucesso"
+                    )
+                else:
+                    logger.error(
+                        f"Erro na validação de interações para estágio {stage_id}: {validate_result.stderr}"
+                    )
+        else:
+            logger.info(
+                "Nenhum estágio de origem foi usado, pulando validação de interações"
+            )
 
         # Gera relatório
         logger.info("Gerando relatório...")
