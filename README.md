@@ -481,15 +481,16 @@ Este projeto inclui um script independente para deletar negócios na Ploomes bas
 - Exclui da deleção os negócios cujos CNJs estão na lista de preservação
 - Deleta os negócios antigos restantes
 - **Executa validação de interações para o estágio de destino**: Após mover os negócios preservados de volta ao estágio de origem, o script automaticamente executa o script de validação de interações (`validate_interactions.py`) para garantir que os negócios nos estágios de origem possuam as interaction records corretas. A validação é executada para cada estágio de origem único utilizado durante o processamento.
+- **Faz upload do histórico no banco de dados**: Ao final da execução, o script automaticamente executa o upload do histórico de negócios (sucesso e erros) para a tabela `negociacoes` no banco de dados PostgreSQL, permitindo rastrear o resultado da deleção por mesa
 - Gera relatório detalhado do processamento
 
 ### Pipelines Suportados
 
-| Pipeline           | Target Stage ID | Deletion Stage ID |
-| ------------------ | --------------- | ----------------- |
-| BT Blue Pipeline   | 110351686       | 110351653         |
-| 2B Ativos Pipeline | 110351791       | 110351790         |
-| BBMD Pipeline      | 110351793       | 110351792         |
+| Pipeline           | Target Stage ID | Deletion Stage ID | Mesa Key |
+| ------------------ | --------------- | ----------------- | -------- |
+| BT Blue Pipeline   | 110351686       | 110351653         | btblue   |
+| 2B Ativos Pipeline | 110351791       | 110351790         | 2bativos |
+| BBMD Pipeline      | 110351793       | 110351792         | bbmd     |
 
 ### Uso do Script de Deleção
 
@@ -499,6 +500,9 @@ python src/deletion/delete_deals.py --input "input/cnjs_erro.xlsx" --pipeline "B
 
 # Ou especificando token diretamente
 python src/deletion/delete_deals.py --input "input/cnjs_erro.xlsx" --api-token "SEU_TOKEN_API" --pipeline "BT Blue Pipeline"
+
+# Com logging detalhado
+python src/deletion/delete_deals.py --input "input/cnjs_erro.xlsx" --pipeline "BT Blue Pipeline" --log-level DEBUG --log "logs/delecao.log"
 ```
 
 ### Configuração do Token da API
@@ -516,6 +520,42 @@ O token da API Ploomes pode ser configurado de duas formas:
    ```bash
    --api-token "SEU_TOKEN_API"
    ```
+
+### Configuração de Credenciais Parceiros (Opcional)
+
+Para validar negócios contra a API da Parceiros antes de deletar, configure as credenciais no arquivo `.env`:
+
+```bash
+# BT Blue
+PARCEIROS_BT_BLUE_USERNAME=seu_usuario_btblue
+PARCEIROS_BT_BLUE_PASSWORD=sua_senha_btblue
+
+# 2B Ativos
+PARCEIROS_2B_ATIVOS_USERNAME=seu_usuario_2bativos
+PARCEIROS_2B_ATIVOS_PASSWORD=sua_senha_2bativos
+
+# BBMD
+PARCEIROS_BBMD_USERNAME=seu_usuario_bbmd
+PARCEIROS_BBMD_PASSWORD=sua_senha_bbmd
+```
+
+Se essas credenciais não estiverem configuradas, a validação contra Parceiros será pulada, mas o script continuará funcionando normalmente.
+
+### Configuração do Banco de Dados
+
+Para que o upload do histórico funcione, configure as variáveis de banco de dados no arquivo `.env`:
+
+```bash
+# Opção 1: URL completa
+DATABASE_URL=postgresql://usuario:senha@localhost:5432/database
+
+# Opção 2: Componentes separados
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=database
+DB_USER=usuario
+DB_PASSWORD=senha
+```
 
 ### Opções do Comando
 
@@ -544,7 +584,25 @@ O script gera um relatório Excel com duas abas:
 2. **Busca de Antigos**: Buscar todos os negócios no estágio de deleção criados antes das 17:00 do dia atual
 3. **Filtragem**: Excluir da deleção os negócios cujos CNJs estão na lista de preservação
 4. **Deleção**: Deletar os negócios antigos filtrados
-5. **Preservação**: Os negócios do arquivo de entrada permanecem intocados na Ploomes
+5. **Validação de Interações**: Executar validação de interações para estágios de origem usados
+6. **Upload no Banco**: Fazer upload do histórico de deleção na tabela `negociacoes`
+7. **Preservação**: Os negócios do arquivo de entrada permanecem intocados na Ploomes
+
+### Estrutura da Tabela de Upload
+
+O script espera encontrar a tabela `negociacoes` com a seguinte estrutura:
+
+```sql
+CREATE TABLE negociacoes (
+    id SERIAL PRIMARY KEY,
+    cnj VARCHAR(255) NOT NULL,
+    negociador VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    mesa VARCHAR(255),
+    error BOOLEAN DEFAULT FALSE,
+    error_message TEXT
+);
+```
 
 **Nota**: O script deletará automaticamente o arquivo de entrada ao final da execução bem-sucedida.
 

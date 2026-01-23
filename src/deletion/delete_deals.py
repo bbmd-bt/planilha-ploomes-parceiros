@@ -53,24 +53,49 @@ PIPELINE_CONFIG = {
     "Pipeline de Teste": {"target_stage_id": 110353005, "deletion_stage_id": 110353004},
 }
 
-# Mapeamento de pipelines para credenciais Parceiros
-PARCEIROS_CREDENTIALS = {
-    "BT Blue Pipeline": {
-        "username": "integracao_bbmd_prod@btcreditos.com.br",
-        "password": "36uXcN{;QdN8",
-    },
-    "2B Ativos Pipeline": {
-        "username": "integracao_2b_prod@btcreditos.com.br",
-        "password": "rw)#F#009/Zd6'xf+84R",
-    },
-    "BBMD Pipeline": {
-        "username": "integracao_bbmd_prod@btcreditos.com.br",
-        "password": "36uXcN{;QdN8",
-    },
-    "Pipeline de Teste": {
-        "username": "integracao_bbmd_prod@btcreditos.com.br",  # Usar credenciais de teste ou padrão
-        "password": "36uXcN{;QdN8",
-    },
+# Mapeamento de pipelines para credenciais Parceiros (carregadas do .env)
+# Variáveis de ambiente esperadas:
+# PARCEIROS_BT_BLUE_USERNAME, PARCEIROS_BT_BLUE_PASSWORD
+# PARCEIROS_2B_ATIVOS_USERNAME, PARCEIROS_2B_ATIVOS_PASSWORD
+# PARCEIROS_BBMD_USERNAME, PARCEIROS_BBMD_PASSWORD
+
+
+def get_parceiros_credentials(pipeline_name: str) -> Optional[dict]:
+    """Carrega credenciais Parceiros do arquivo .env para o pipeline especificado."""
+    credential_map = {
+        "BT Blue Pipeline": (
+            "PARCEIROS_BT_BLUE_USERNAME",
+            "PARCEIROS_BT_BLUE_PASSWORD",
+        ),
+        "2B Ativos Pipeline": (
+            "PARCEIROS_2B_ATIVOS_USERNAME",
+            "PARCEIROS_2B_ATIVOS_PASSWORD",
+        ),
+        "BBMD Pipeline": ("PARCEIROS_BBMD_USERNAME", "PARCEIROS_BBMD_PASSWORD"),
+        "Pipeline de Teste": (
+            "PARCEIROS_BT_BLUE_USERNAME",
+            "PARCEIROS_BT_BLUE_PASSWORD",
+        ),
+    }
+
+    if pipeline_name not in credential_map:
+        return None
+
+    username_var, password_var = credential_map[pipeline_name]
+    username = os.getenv(username_var)
+    password = os.getenv(password_var)
+
+    if username and password:
+        return {"username": username, "password": password}
+    return None
+
+
+# Mapeamento de pipelines para nomes de mesas
+PIPELINE_TO_MESA_MAP = {
+    "BT Blue Pipeline": "btblue",
+    "2B Ativos Pipeline": "2bativos",
+    "BBMD Pipeline": "bbmd",
+    "Pipeline de Teste": "test",
 }
 
 # Mapeamento de mesas para pipelines de origem e estágios de destino
@@ -81,6 +106,9 @@ ORIGIN_PIPELINE_CONFIG = {
     "Mesa BBMD": {"pipeline_id": 110066162, "stage_id": 110352812},
     "Mesa Elson": {"pipeline_id": 110066424, "stage_id": 110352814},
 }
+
+# Logger global (será inicializado em setup_logging)
+logger = logging.getLogger(__name__)
 
 
 def setup_logging(
@@ -111,6 +139,42 @@ def validate_pipeline(pipeline_name: str) -> dict:
         )
 
     return PIPELINE_CONFIG[pipeline_name]
+
+
+def find_planilhas_for_upload(mesa_key: str) -> Optional[tuple]:
+    """
+    Procura pelas planilhas de sucesso e erros da data de hoje na estrutura de pastas.
+
+    Args:
+        mesa_key: Chave da mesa (btblue, 2bativos, bbmd, test)
+
+    Returns:
+        Tupla (success_file, errors_file) ou None se não encontrar
+    """
+    today = datetime.now().strftime("%d-%m-%Y")
+
+    # Procurar na pasta de output
+    output_dir = Path("output") / today / mesa_key
+    errors_dir = Path("errors") / today / mesa_key
+
+    if not output_dir.exists() or not errors_dir.exists():
+        logger.warning(
+            f"Diretórios não encontrados. Output: {output_dir.exists()}, Errors: {errors_dir.exists()}"
+        )
+        return None
+
+    # Procurar por arquivos Excel
+    success_files = list(output_dir.glob("*.xlsx"))
+    error_files = list(errors_dir.glob("*.xlsx"))
+
+    if not success_files or not error_files:
+        logger.warning(
+            f"Arquivos não encontrados. Success: {len(success_files)}, Errors: {len(error_files)}"
+        )
+        return None
+
+    # Pegar o primeiro arquivo de cada pasta (geralmente há apenas um)
+    return (str(success_files[0]), str(error_files[0]))
 
 
 def main():
@@ -244,8 +308,8 @@ python src/delete_deals.py \\
 
         # Inicializa cliente Parceiros com credenciais específicas do pipeline
         parceiros_client = None
-        if args.pipeline in PARCEIROS_CREDENTIALS:
-            creds = PARCEIROS_CREDENTIALS[args.pipeline]
+        creds = get_parceiros_credentials(args.pipeline)
+        if creds:
             logger.info(
                 f"Inicializando cliente da API Parceiros para pipeline {args.pipeline}..."
             )
@@ -338,6 +402,67 @@ python src/delete_deals.py \\
             logger.info(f"Arquivo de entrada deletado: {args.input}")
         except Exception as e:
             logger.warning(f"Erro ao deletar arquivo de entrada: {e}")
+
+        # Executa upload para o banco de dados (se não estiver em dry-run)
+        if not args.dry_run:
+            logger.info("=== Iniciando upload para o banco de dados ===")
+
+            # Mapear pipeline para mesa key
+            mesa_key = PIPELINE_TO_MESA_MAP.get(args.pipeline)
+            if not mesa_key:
+                logger.warning(
+                    f"Não foi possível mapear o pipeline {args.pipeline} para uma mesa"
+                )
+            else:
+                # Procurar pelas planilhas
+                planilhas = find_planilhas_for_upload(mesa_key)
+                if planilhas:
+                    success_file, errors_file = planilhas
+                    logger.info("Encontrados arquivos para upload:")
+                    logger.info(f"  - Sucesso: {success_file}")
+                    logger.info(f"  - Erros: {errors_file}")
+
+                    # Executar upload_leads_history
+                    upload_cmd = [
+                        sys.executable,
+                        str(
+                            Path(__file__).parent.parent
+                            / "upload"
+                            / "upload_leads_history.py"
+                        ),
+                        "--success",
+                        success_file,
+                        "--errors",
+                        errors_file,
+                        "--mesa",
+                        mesa_key,
+                        "--log-level",
+                        args.log_level,
+                    ]
+
+                    if args.log:
+                        upload_cmd.extend(["--log", str(args.log)])
+
+                    try:
+                        upload_result = subprocess.run(  # nosec B603
+                            upload_cmd, capture_output=True, text=True
+                        )
+                        if upload_result.returncode == 0:
+                            logger.info(
+                                "Upload para o banco de dados executado com sucesso"
+                            )
+                        else:
+                            logger.error(
+                                f"Erro no upload para o banco de dados: {upload_result.stderr}"
+                            )
+                    except Exception as e:
+                        logger.error(f"Erro ao executar script de upload: {e}")
+                else:
+                    logger.warning(
+                        f"Não foi possível encontrar os arquivos de upload para a mesa {mesa_key} na data de hoje"
+                    )
+        else:
+            logger.info("Modo DRY-RUN ativo - pulando upload para o banco de dados")
 
         return 0
 
