@@ -23,6 +23,7 @@ Uso:
 import argparse
 import logging
 import os
+import shutil
 import subprocess  # nosec B404
 import sys
 from datetime import datetime
@@ -289,6 +290,23 @@ python src/delete_deals.py \\
     logger.info(f"Arquivo de saída: {args.output}")
     if args.dry_run:
         logger.info("MODO DRY-RUN: Nenhuma alteração será feita")
+
+    # Copia a planilha de entrada para errors/hoje/mesa
+    try:
+        mesa_key = PIPELINE_TO_MESA_MAP.get(args.pipeline)
+        if mesa_key:
+            today = datetime.now().strftime("%d-%m-%Y")
+            errors_copy_dir = Path("errors") / today / mesa_key
+            errors_copy_dir.mkdir(parents=True, exist_ok=True)
+            errors_copy_path = errors_copy_dir / args.input.name
+            shutil.copy(str(args.input), str(errors_copy_path))
+            logger.info(f"Planilha de entrada copiada para: {errors_copy_path}")
+        else:
+            logger.warning(
+                f"Não foi possível mapear o pipeline {args.pipeline} para uma mesa"
+            )
+    except Exception as e:
+        logger.warning(f"Erro ao copiar planilha de entrada: {e}")
 
     try:
         # Carrega CNJs do arquivo Excel
