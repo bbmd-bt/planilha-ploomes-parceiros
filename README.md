@@ -41,18 +41,35 @@ planilha-ploomes-parceiros/
 │       └── ci.yml          # Configuração de CI/CD
 ├── src/
 │   ├── __init__.py          # Inicialização do pacote
-│   ├── validator.py         # Funções de validação
-│   ├── normalizers.py       # Funções de normalização
-│   ├── mapping.py           # Mapeamento de nomes de negociadores
-│   ├── transformer.py       # Lógica de transformação
+│   ├── config.py            # Configurações
 │   ├── main.py             # Script principal
-│   ├── db_updater.py       # Atualização de mapeamentos do banco de dados
-│   ├── extract_escritorios.py # Extração de escritórios únicos
-│   ├── ploomes_client.py    # Cliente para API Ploomes
-│   ├── ploomes_sync.py      # Lógica de sincronização
-│   ├── delete_deals.py      # Script de deleção de negócios
-│   ├── upload_leads_history.py # Upload do histórico de leads
-│   └── mirror_pipeline.py   # Espelhamento de pipeline
+│   ├── validate_interactions.py # Validação de interações
+│   ├── clients/
+│   │   ├── __init__.py
+│   │   ├── parceiros_client.py # Cliente para parceiros
+│   │   └── ploomes_client.py    # Cliente para API Ploomes
+│   ├── data_processing/
+│   │   ├── __init__.py
+│   │   ├── normalizers.py       # Funções de normalização
+│   │   ├── transformer.py       # Lógica de transformação
+│   │   └── validator.py         # Funções de validação
+│   ├── database/
+│   │   ├── __init__.py
+│   │   └── db_updater.py       # Atualização de mapeamentos do banco de dados
+│   ├── deletion/
+│   │   ├── __init__.py
+│   │   ├── delete_deals.py      # Script de deleção de negócios
+│   │   └── delete_duplicate_deals.py # Remoção de duplicatas
+│   ├── extraction/
+│   │   ├── __init__.py
+│   │   └── extract_escritorios.py # Extração de escritórios únicos
+│   ├── sync/
+│   │   ├── __init__.py
+│   │   ├── mirror_pipeline.py   # Espelhamento de pipeline
+│   │   └── ploomes_sync.py      # Lógica de sincronização
+│   └── upload/
+│       ├── __init__.py
+│       └── upload_leads_history.py # Upload do histórico de leads
 ├── tests/                   # Testes automatizados
 │   └── test_upload_leads_history.py # Testes do upload de histórico
 ├── input/                   # Planilhas de entrada (.xlsx)
@@ -73,6 +90,8 @@ planilha-ploomes-parceiros/
 
 ```bash
 python -m venv venv
+source venv/bin/activate  # Linux/Mac
+# ou
 .\venv\Scripts\activate  # Windows
 ```
 
@@ -123,7 +142,7 @@ CREATE TABLE leads_parceiros_upload_history (
 #### Modo Básico
 
 ```bash
-python src/upload_leads_history.py \
+python src/upload/upload_leads_history.py \
   --success "input/todos_leads.xlsx" \
   --errors "input/leads_com_erro.xlsx" \
   --mesa "Nome da Mesa"
@@ -132,7 +151,7 @@ python src/upload_leads_history.py \
 #### Modo Dry-Run (Recomendado para Testes)
 
 ```bash
-python src/upload_leads_history.py \
+python src/upload/upload_leads_history.py \
   --success "input/todos_leads.xlsx" \
   --errors "input/leads_com_erro.xlsx" \
   --mesa "Nome da Mesa" \
@@ -142,7 +161,7 @@ python src/upload_leads_history.py \
 #### Com Logging Detalhado
 
 ```bash
-python src/upload_leads_history.py \
+python src/upload/upload_leads_history.py \
   --success "input/todos_leads.xlsx" \
   --errors "input/leads_com_erro.xlsx" \
   --mesa "Nome da Mesa" \
@@ -210,6 +229,8 @@ DB_PASSWORD=senha
 2024-01-20 10:30:15.789 | INFO     | __main__:run:247 - Leads com erro: 184
 ```
 
+**Nota**: Certifique-se de que o ambiente virtual esteja ativado (`source venv/bin/activate`) antes de executar qualquer comando.
+
 ## Uso
 
 ### Modo Básico
@@ -262,7 +283,7 @@ Se necessário, você ainda pode sobrescrever o valor automático fornecendo `--
 Para extrair uma lista única de escritórios responsáveis de um arquivo CSV do Ploomes:
 
 ```bash
-python src/extract_escritorios.py --input "caminho/arquivo.csv"
+python src/extraction/extract_escritorios.py --input "caminho/arquivo.csv"
 ```
 
 Este script:
@@ -277,7 +298,7 @@ Este script:
 Para remover negócios duplicados de um funil específico da Ploomes baseado no CNJ:
 
 ```bash
-python src/delete_duplicate_deals.py --pipeline-id <ID_DO_PIPELINE>
+python src/deletion/delete_duplicate_deals.py --pipeline-id <ID_DO_PIPELINE>
 ```
 
 Este script:
@@ -435,6 +456,7 @@ Veja detalhes no log: logs/processamento_20251212_154657.log
 
 - Certifique-se de executar o script a partir do diretório raiz do projeto
 - Use: `python src/main.py` (não `python main.py` dentro de src)
+- Para scripts em subpastas, use o caminho completo, ex.: `python src/upload/upload_leads_history.py`
 
 ### Erro: "OSError: Cannot save file into a non-existent directory"
 
@@ -470,10 +492,10 @@ Este projeto inclui um script independente para deletar negócios na Ploomes bas
 
 ```bash
 # Usando token do arquivo .env (recomendado)
-python src/delete_deals.py --input "input/cnjs_erro.xlsx" --pipeline "BT Blue Pipeline"
+python src/deletion/delete_deals.py --input "input/cnjs_erro.xlsx" --pipeline "BT Blue Pipeline"
 
 # Ou especificando token diretamente
-python src/delete_deals.py --input "input/cnjs_erro.xlsx" --api-token "SEU_TOKEN_API" --pipeline "BT Blue Pipeline"
+python src/deletion/delete_deals.py --input "input/cnjs_erro.xlsx" --api-token "SEU_TOKEN_API" --pipeline "BT Blue Pipeline"
 ```
 
 ### Configuração do Token da API
