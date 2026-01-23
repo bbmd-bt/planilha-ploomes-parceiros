@@ -52,6 +52,26 @@ PIPELINE_CONFIG = {
     "Pipeline de Teste": {"target_stage_id": 110353005, "deletion_stage_id": 110353004},
 }
 
+# Mapeamento de pipelines para credenciais Parceiros
+PARCEIROS_CREDENTIALS = {
+    "BT Blue Pipeline": {
+        "username": "integracao_bbmd_prod@btcreditos.com.br",
+        "password": "36uXcN{;QdN8",
+    },
+    "2B Ativos Pipeline": {
+        "username": "integracao_2b_prod@btcreditos.com.br",
+        "password": "rw)#F#009/Zd6'xf+84R",
+    },
+    "BBMD Pipeline": {
+        "username": "integracao_bbmd_prod@btcreditos.com.br",
+        "password": "36uXcN{;QdN8",
+    },
+    "Pipeline de Teste": {
+        "username": "integracao_bbmd_prod@btcreditos.com.br",  # Usar credenciais de teste ou padrão
+        "password": "36uXcN{;QdN8",
+    },
+}
+
 # Mapeamento de mesas para pipelines de origem e estágios de destino
 ORIGIN_PIPELINE_CONFIG = {
     "Mesa JPA": {"pipeline_id": 110065217, "stage_id": 110352811},
@@ -221,17 +241,17 @@ python src/delete_deals.py \\
         # Inicializa cliente Ploomes
         client = PloomesClient(args.api_token)
 
-        # Inicializa cliente Parceiros se as credenciais estiverem disponíveis
+        # Inicializa cliente Parceiros com credenciais específicas do pipeline
         parceiros_client = None
-        parceiros_username = os.getenv("PARCEIROS_API_USERNAME")
-        parceiros_password = os.getenv("PARCEIROS_API_PASSWORD")
-
-        if parceiros_username and parceiros_password:
-            logger.info("Inicializando cliente da API Parceiros...")
-            parceiros_client = ParceirosClient(parceiros_username, parceiros_password)
+        if args.pipeline in PARCEIROS_CREDENTIALS:
+            creds = PARCEIROS_CREDENTIALS[args.pipeline]
+            logger.info(
+                f"Inicializando cliente da API Parceiros para pipeline {args.pipeline}..."
+            )
+            parceiros_client = ParceirosClient(creds["username"], creds["password"])
         else:
             logger.warning(
-                "Credenciais da API Parceiros não encontradas. "
+                f"Credenciais da API Parceiros não encontradas para o pipeline {args.pipeline}. "
                 "Deleção de negócios não será validada contra Parceiros."
             )
 
