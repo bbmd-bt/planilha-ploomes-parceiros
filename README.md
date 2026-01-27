@@ -43,6 +43,7 @@ planilha-ploomes-parceiros/
 │   ├── __init__.py          # Inicialização do pacote
 │   ├── config.py            # Configurações
 │   ├── main.py             # Script principal
+│   ├── validate_creator.py  # Validação de criador de negócios
 │   ├── validate_interactions.py # Validação de interações
 │   ├── clients/
 │   │   ├── __init__.py
@@ -230,6 +231,79 @@ DB_PASSWORD=senha
 ```
 
 **Nota**: Certifique-se de que o ambiente virtual esteja ativado (`source venv/bin/activate`) antes de executar qualquer comando.
+
+## Validação de Criador de Negócios
+
+Este script valida quais negócios de uma lista de CNJs (fornecida via planilha Excel) não foram criados pelo usuário de integração na Ploomes. Ele é útil para identificar negócios que podem ter sido criados manualmente ou por outros processos, garantindo a integridade dos dados automatizados.
+
+### Funcionalidades
+
+- **Consulta à API Ploomes**: Para cada CNJ na planilha de entrada, busca os negócios associados na Ploomes
+- **Verificação de Criador**: Compara o `CreatorId` de cada negócio com o ID do usuário de integração (110026673)
+- **Separação de Resultados**: Gera uma planilha separada apenas com os negócios que não foram criados pelo usuário de integração
+- **Rate Limiting**: Respeita os limites de requisição da API Ploomes (120 req/min)
+- **Logs Detalhados**: Acompanhamento completo do processamento com Loguru
+
+### Como Usar
+
+#### Modo Básico
+
+```bash
+python src/validate_creator.py --input "input/cnjs_para_validar.xlsx"
+```
+
+#### Com Saída Personalizada
+
+```bash
+python src/validate_creator.py \
+  --input "input/cnjs_para_validar.xlsx" \
+  --output "output/negocios_manuais.xlsx" \
+  --api-token "seu_token_aqui"
+```
+
+### Parâmetros
+
+- `--input` (obrigatório): Caminho para a planilha Excel de entrada contendo a coluna "CNJ"
+- `--output` (opcional): Caminho para a planilha Excel de saída. Se não informado, será criado automaticamente em `output/nao_criados_integracao_{timestamp}.xlsx`
+- `--api-token` (opcional): Token da API Ploomes. Se não informado, usa a variável de ambiente `PLOOMES_API_TOKEN`
+
+### Formato da Planilha de Entrada
+
+A planilha de entrada deve conter pelo menos uma coluna chamada "CNJ" com os números dos processos no formato padrão (NNNNNNN-DD.AAAA.J.TR.OOOO).
+
+| CNJ                      |
+|--------------------------|
+| 0020490-20.2022.5.04.0104 |
+| 0001234-56.2023.8.01.0001 |
+| ...                      |
+
+### Formato da Planilha de Saída
+
+A planilha de saída contém os negócios que não foram criados pelo usuário de integração, com as seguintes colunas:
+
+| CNJ                      | DealId | Title          | CreatorId | StatusId | PipelineId |
+|--------------------------|--------|----------------|-----------|----------|------------|
+| 0020490-20.2022.5.04.0104 | 12345  | Processo XYZ   | 999999    | 10       | 5          |
+| ...                      | ...    | ...            | ...       | ...      | ...        |
+
+### Exemplo de Saída no Terminal
+
+```
+2026-01-27 10:00:00.000 | INFO     | __main__:main:45 - Processando CNJ: 0020490-20.2022.5.04.0104
+2026-01-27 10:00:01.234 | INFO     | __main__:main:55 - Planilha salva em: output/nao_criados_integracao_20260127_100000.xlsx
+2026-01-27 10:00:01.234 | INFO     | __main__:main:56 - Total de negócios não criados pelo usuário de integração: 5
+```
+
+### Configuração
+
+Certifique-se de que o token da API Ploomes esteja configurado:
+
+```bash
+# No arquivo .env
+PLOOMES_API_TOKEN=seu_token_aqui
+```
+
+Ou passe diretamente via parâmetro `--api-token`.
 
 ## Uso
 
