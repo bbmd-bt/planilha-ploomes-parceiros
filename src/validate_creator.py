@@ -26,6 +26,7 @@ Para cada CNJ fornecido em uma planilha Excel, o script:
 1. Consulta a API Ploomes para buscar negócios associados ao CNJ
 2. Verifica se o CreatorId do negócio é diferente do ID do usuário de integração (110026673)
 3. Separa os negócios que não foram criados pelo usuário de integração em uma planilha de saída
+4. Deleta a planilha de entrada após execução bem-sucedida
 
 Uso:
     python src/validate_creator.py --input input/cnjs.xlsx --output output/resultado.xlsx
@@ -34,6 +35,8 @@ Argumentos:
     --input: Caminho da planilha Excel com coluna 'CNJ' (obrigatório)
     --output: Caminho da planilha de saída (opcional)
     --api-token: Token da API Ploomes (opcional, padrão: PLOOMES_API_TOKEN do .env)
+
+Nota: A planilha de entrada será automaticamente deletada após uma execução bem-sucedida.
 
 Exemplo de planilha de entrada:
     | CNJ                      |
@@ -150,6 +153,13 @@ def main() -> int:
         )
     else:
         logger.info("Todos os negócios foram criados pelo usuário de integração.")
+
+    # Deletar planilha de input após execução bem-sucedida
+    try:
+        args.input.unlink()
+        logger.info(f"Planilha de entrada deletada: {args.input}")
+    except Exception as e:
+        logger.warning(f"Não foi possível deletar a planilha de entrada: {e}")
 
     return 0
 

@@ -243,6 +243,7 @@ Este script valida quais negócios de uma lista de CNJs (fornecida via planilha 
 - **Separação de Resultados**: Gera uma planilha separada apenas com os negócios que não foram criados pelo usuário de integração
 - **Rate Limiting**: Respeita os limites de requisição da API Ploomes (120 req/min)
 - **Logs Detalhados**: Acompanhamento completo do processamento com Loguru
+- **Limpeza Automática**: Deleta a planilha de entrada após execução bem-sucedida
 
 ### Como Usar
 
