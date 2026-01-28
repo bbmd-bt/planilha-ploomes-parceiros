@@ -18,7 +18,7 @@ from config import MESA_DELETION_STAGE_MAP
 
 # Carregar variáveis de ambiente do arquivo .env
 load_dotenv()
-from database.db_updater import DatabaseUpdater, DatabaseUpdateError
+from database.db_updater import ApiUpdater, DatabaseUpdateError
 
 
 def main() -> int:
@@ -54,7 +54,7 @@ def main() -> int:
     parser.add_argument(
         "--update-db",
         action="store_true",
-        help="Atualiza mapeamentos de escritórios e negociadores do banco de dados",
+        help="Atualiza mapeamentos de escritórios e negociadores da API Parceiros",
     )
     parser.add_argument(
         "--api-token",
@@ -118,10 +118,10 @@ def main() -> int:
     # Atualiza banco de dados se solicitado
     if args.update_db:
         try:
-            updater = DatabaseUpdater()
+            updater = ApiUpdater(args.mesa)
             updater.update_database()
         except DatabaseUpdateError as e:
-            logger.error(f"Erro na atualização do banco de dados: {e}")
+            logger.error(f"Erro na atualização dos mapeamentos: {e}")
             sys.exit(1)
 
     input_path = args.input

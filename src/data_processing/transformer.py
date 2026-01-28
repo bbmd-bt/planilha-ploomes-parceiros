@@ -61,7 +61,7 @@ class PlanilhaTransformer:
         negociador_series = (
             input_df.get("Responsável", pd.Series(dtype=str))
             .fillna("")
-            .apply(map_negotiator)
+            .apply(lambda x: map_negotiator(x, self.mesa))
         )
         # Se mesa for BBMD, todos os negociadores devem ser "Iasmin Barbosa"
         if self.mesa and self.mesa.upper() == "BBMD":
@@ -97,7 +97,9 @@ class PlanilhaTransformer:
         escritorio_raw_series = input_df.get(
             "Escritório", pd.Series("", index=input_df.index, dtype=str)
         )
-        results = escritorio_raw_series.apply(normalize_escritorio)
+        results = escritorio_raw_series.apply(
+            lambda x: normalize_escritorio(x, self.mesa)
+        )
         escritorio_series = results.apply(lambda x: x[0])
         original_series = results.apply(lambda x: x[1])
 

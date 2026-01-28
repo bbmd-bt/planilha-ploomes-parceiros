@@ -56,7 +56,7 @@ planilha-ploomes-parceiros/
 │   │   └── validator.py         # Funções de validação
 │   ├── database/
 │   │   ├── __init__.py
-│   │   └── db_updater.py       # Atualização de mapeamentos do banco de dados
+│   │   └── db_updater.py       # Atualização de mapeamentos via API
 │   ├── deletion/
 │   │   ├── __init__.py
 │   │   ├── delete_deals.py      # Script de deleção de negócios
@@ -394,29 +394,28 @@ Este script:
 - `--dry-run`: Executa em modo simulação (não deleta nada)
 - `--log-level`: Nível de log (DEBUG, INFO, WARNING, ERROR, padrão: INFO)
 
-## Atualização de Mapeamentos do Banco de Dados
+## Atualização de Mapeamentos
 
-O script suporta atualização automática de mapeamentos de escritórios e negociadores diretamente do banco de dados PostgreSQL.
+O script suporta atualização automática de mapeamentos de escritórios e negociadores.
 
 ### Funcionalidades
 
-- Conecta ao banco de dados PostgreSQL usando credenciais do arquivo `.env`
-- Consulta a tabela `lead_snapshot` e extrai dados JSON do campo `payload`
-- Atualiza `utils/escritorios.json` com mapeamentos de escritórios
-- Atualiza `utils/negociadores.json` com mapeamentos de negociadores
+- **Escritórios e Negociadores**: Conecta à API da Parceiros usando credenciais baseadas na mesa (`--mesa`) e extrai nomes únicos de `escritorio_responsavel` e `negociador_responsavel` de todos os leads
+- Atualiza `utils/escritorios.json` com mapeamentos de escritórios da API
+- Atualiza `utils/negociadores.json` com mapeamentos de negociadores da API
 - Integra-se ao fluxo principal via flag `--update-db`
 
-### Configuração do Banco de Dados
+### Configuração
 
-Configure as seguintes variáveis no arquivo `.env`:
+#### Para Escritórios e Negociadores (API Parceiros)
 
-- `DB_HOST`: Host do banco de dados
-- `DB_PORT`: Porta do banco de dados (padrão: 5432)
-- `DB_NAME`: Nome do banco de dados
-- `DB_USER`: Usuário do banco de dados
-- `DB_PASSWORD`: Senha do banco de dados
+Configure as credenciais da API Parceiros no arquivo `.env` baseadas na mesa:
 
-### Uso com Atualização de Banco
+- Para `btblue`: `PARCEIROS_BT_BLUE_USERNAME` e `PARCEIROS_BT_BLUE_PASSWORD`
+- Para `2bativos`: `PARCEIROS_2B_ATIVOS_USERNAME` e `PARCEIROS_2B_ATIVOS_PASSWORD`
+- Para `bbmd`: `PARCEIROS_BBMD_USERNAME` e `PARCEIROS_BBMD_PASSWORD`
+
+### Uso com Atualização de Mapeamentos
 
 Para executar a transformação com atualização automática dos mapeamentos:
 
@@ -424,7 +423,7 @@ Para executar a transformação com atualização automática dos mapeamentos:
 python src/main.py --mesa "Nome da Mesa" --update-db
 ```
 
-**Nota**: Se a atualização do banco falhar, a execução será abortada para evitar processamento com dados desatualizados.
+**Nota**: Se a atualização falhar, a execução será abortada para evitar processamento com dados desatualizados.
 
 ### Estrutura dos Dados JSON
 

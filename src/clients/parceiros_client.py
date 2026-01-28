@@ -29,6 +29,8 @@ class ParceirosClient:
         timeout: Timeout para requisições HTTP (padrão: 30 segundos)
     """
 
+    PAGE_SIZE = 10  # Tamanho fixo das páginas da API
+
     def __init__(
         self,
         username: str,
@@ -43,15 +45,12 @@ class ParceirosClient:
         self.session = requests.Session()
         self.token: Optional[str] = None
 
-    def authenticate(self) -> bool:
+    def authenticate(self) -> None:
         """
         Realiza autenticação na API Parceiros e obtém o token.
 
-        Returns:
-            True se autenticação foi bem-sucedida, False caso contrário
-
         Raises:
-            ParceirosAPIError: Se houver erro na requisição
+            ParceirosAPIError: Se houver erro na autenticação ou requisição
         """
         try:
             login_url = f"{self.base_url}/login"
@@ -60,20 +59,34 @@ class ParceirosClient:
             response = self.session.post(login_url, json=payload, timeout=self.timeout)
 
             if response.status_code != 200:
-                logger.error(
-                    f"Erro na autenticação Parceiros: {response.status_code} - {response.text}"
-                )
-                return False
+                error_msg = f"Erro na autenticação Parceiros: {response.status_code}"
+                if response.status_code == 502:
+                    error_msg += (
+                        " - Internal Server Error. Isso pode indicar que o servidor da API "
+                        "Parceiros está temporariamente indisponível. Tente novamente em alguns "
+                        "minutos. Se o problema persistir, verifique as credenciais ou contate o suporte."
+                    )
+                elif response.status_code == 401:
+                    error_msg += (
+                        " - Unauthorized. Verifique se as credenciais estão corretas."
+                    )
+                elif response.status_code == 403:
+                    error_msg += " - Forbidden. Verifique se a conta tem permissões para acessar a API."
+                else:
+                    error_msg += f" - {response.text}"
+                logger.error(f"{error_msg} (URL: {login_url})")
+                raise ParceirosAPIError(error_msg)
 
             data = response.json()
             self.token = data.get("token")
 
             if not self.token:
                 logger.error("Token não recebido na resposta de autenticação")
-                return False
+                raise ParceirosAPIError(
+                    "Token não recebido na resposta de autenticação"
+                )
 
             logger.info("Autenticação Parceiros bem-sucedida")
-            return True
 
         except requests.exceptions.RequestException as e:
             logger.error(f"Erro ao conectar na API Parceiros: {e}")
@@ -107,7 +120,7 @@ class ParceirosClient:
                     "Content-Type": "application/json",
                 }
 
-                params = {"pagina": page, "tamanho_pagina": 10}
+                params = {"pagina": page, "tamanho_pagina": self.PAGE_SIZE}
 
                 response = self.session.get(
                     leads_url, headers=headers, params=params, timeout=self.timeout
@@ -149,6 +162,78 @@ class ParceirosClient:
 
         except requests.exceptions.RequestException as e:
             logger.error(f"Erro ao obter leads: {e}")
+            raise ParceirosAPIError(f"Erro de conexão: {e}")
+
+    def get_leads_page(self, page: int) -> List[Dict]:
+        """
+        Obtém uma página específica de leads da API Parceiros.
+
+        Args:
+            page: Número da página (1-indexed)
+
+        Returns:
+            Lista com os leads da página
+
+        Raises:
+            ParceirosAPIError: Se houver erro na requisição ou autenticação
+        """
+        if not self.token:
+            raise ParceirosAPIError("Não autenticado. Execute authenticate() primeiro.")
+
+        try:
+            leads_url = f"{self.base_url}/pendencia"
+            headers = {
+                "Authorization": f"Bearer {self.token}",
+                "Content-Type": "application/json",
+            }
+
+            params = {"numero_pagina": page, "tamanho_pagina": self.PAGE_SIZE}
+
+            response = self.session.get(
+                leads_url, headers=headers, params=params, timeout=self.timeout
+            )
+
+            if response.status_code != 200:
+                error_msg = (
+                    f"Erro ao obter leads (página {page}): {response.status_code}"
+                )
+                if response.status_code == 401:
+                    error_msg += " - Unauthorized. O token pode ter expirado. Tente autenticar novamente."
+                elif response.status_code == 403:
+                    error_msg += " - Forbidden. Verifique se a conta tem permissões para acessar os dados."
+                elif response.status_code == 404:
+                    error_msg += " - Not Found. O endpoint pode ter mudado."
+                elif response.status_code == 429:
+                    error_msg += " - Too Many Requests. Aguarde alguns minutos antes de tentar novamente."
+                elif response.status_code == 500:
+                    error_msg += (
+                        " - Internal Server Error. Problema no servidor da API."
+                    )
+                elif response.status_code == 502:
+                    error_msg += " - Bad Gateway. O servidor da API pode estar temporariamente indisponível."
+                elif response.status_code == 503:
+                    error_msg += " - Service Unavailable. O serviço da API pode estar em manutenção."
+                else:
+                    error_msg += f" - {response.text}"
+                logger.error(f"{error_msg} (URL: {leads_url})")
+                return []
+
+            data = response.json()
+            # A resposta pode ter 'body' wrapping ou não, tentar ambas as formas
+            if "body" in data:
+                body = data.get("body", {})
+            else:
+                body = data
+
+            resultado = body.get("resultado", [])
+            return resultado
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Erro ao obter página {page}: {e}")
+            return []
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Erro ao obter leads: {e}")
             raise ParceirosAPIError(f"Erro ao obter leads: {e}")
 
     def get_leads_by_cnj(self, cnj: str) -> List[Dict]:
@@ -174,7 +259,7 @@ class ParceirosClient:
                 "Content-Type": "application/json",
             }
 
-            params: Dict[str, Any] = {"cnj": cnj, "tamanho_pagina": 10}  # type: ignore[assignment]
+            params: Dict[str, Any] = {"cnj": cnj, "tamanho_pagina": self.PAGE_SIZE}  # type: ignore[assignment]
 
             response = self.session.get(  # type: ignore
                 leads_url, headers=headers, params=params, timeout=self.timeout  # type: ignore[arg-type]

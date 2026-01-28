@@ -19,7 +19,7 @@ import pandas as pd
 from loguru import logger
 
 from src.clients.ploomes_client import PloomesClient
-from src.clients.parceiros_client import ParceirosClient
+from src.clients.parceiros_client import ParceirosClient, ParceirosAPIError
 
 
 @dataclass
@@ -160,7 +160,16 @@ class PloomesSync:
                         )
                     else:
                         logger.debug(f"Deal {deal.get('Id')}: CNJ não encontrado")
-                    self._move_origin_deal(deal, error_description=error_description)
+
+                    # Verificar se a descrição do erro indica que o lead já existe
+                    if error_description and "já existe" in error_description.lower():
+                        logger.info(
+                            f"Deal {deal.get('Id')} (CNJ: {deal_cnj}): erro indica que já existe, "
+                            "tratando como sucesso e pulando movimentação do deal de origem"
+                        )
+                        # Não mover o deal de origem, tratar como sucesso
+                        continue
+
                     origin_stage = self._move_origin_deal(
                         deal, error_description=error_description
                     )
@@ -264,6 +273,15 @@ class PloomesSync:
         result = ProcessingResult(cnj=cnj)
         logger.info(f"Processando CNJ: {cnj}")
         try:
+            # Verificar se o erro para este CNJ indica que já existe
+            error_description = self.cnj_errors.get(cnj)
+            if error_description and "já existe" in error_description.lower():
+                logger.info(
+                    f"CNJ {cnj}: erro indica que já existe, tratando como sucesso e mantendo no estágio de deleção"
+                )
+                result.moved_successfully = True
+                return result
+
             # Buscar negócio por CNJ
             deals = self.client.search_deals_by_cnj(cnj)
 
@@ -833,7 +851,9 @@ class PloomesSync:
                 not hasattr(self.parceiros_client, "token")
                 or not self.parceiros_client.token
             ):
-                if not self.parceiros_client.authenticate():
+                try:
+                    self.parceiros_client.authenticate()
+                except ParceirosAPIError:
                     logger.error("Falha ao autenticar na API Parceiros")
                     return True  # Ser permissivo em caso de erro
 

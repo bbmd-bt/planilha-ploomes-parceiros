@@ -1,13 +1,14 @@
 import os
-import psycopg2
-from psycopg2.extras import RealDictCursor
 import json
 from pathlib import Path
 import time
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from loguru import logger
 from dotenv import load_dotenv
+from src.clients.parceiros_client import ParceirosClient, ParceirosAPIError
+from tqdm import tqdm
 
 
 class DatabaseUpdateError(Exception):
@@ -22,118 +23,40 @@ def sanitize_string(value):
     return re.sub(r"[^a-zA-Z0-9\s\-_]", "", value).strip()
 
 
-class DatabaseUpdater:
-    def __init__(self):
+# Mapeamento de mesa para pipeline para credenciais Parceiros
+MESA_TO_PIPELINE = {
+    "btblue": "BT Blue Pipeline",
+    "2bativos": "2B Ativos Pipeline",
+    "bbmd": "BBMD Pipeline",
+}
+
+
+class ApiUpdater:
+    def __init__(self, mesa: str):
         load_dotenv()
-        required_env_vars = ["DB_HOST", "DB_NAME", "DB_USER", "DB_PASSWORD"]
-        for var in required_env_vars:
-            value = os.getenv(var)
-            if not value or not value.strip():
-                raise ValueError(f"Environment variable {var} is not set or empty.")
-        self.db_config = {
-            "host": os.getenv("DB_HOST"),
-            "port": os.getenv("DB_PORT", "5432"),
-            "database": os.getenv("DB_NAME"),
-            "user": os.getenv("DB_USER"),
-            "password": os.getenv("DB_PASSWORD"),
-            "sslmode": "require",  # Enforce SSL for secure connections
-            "connect_timeout": 10,  # Timeout to prevent hanging connections
-        }
-        self.base_dir = Path(__file__).parent.parent
+        self.mesa = mesa.lower()
+        if self.mesa not in MESA_TO_PIPELINE:
+            raise ValueError(
+                f"Mesa '{mesa}' não suportada. Mesas disponíveis: {', '.join(MESA_TO_PIPELINE.keys())}"
+            )
 
-    def connect(self):
-        logger.debug("Tentando conectar ao banco de dados.")
-        try:
-            conn = psycopg2.connect(**self.db_config)
-            logger.info("Conectado ao banco de dados com sucesso.")
-            return conn
-        except Exception as e:
-            logger.error(f"Erro ao conectar ao banco de dados: {e}")
-            raise DatabaseUpdateError(f"Erro ao conectar ao banco de dados: {e}")
-
-    def fetch_data(self, conn, batch_size=1000):
-        logger.debug("Executando query para recuperar dados do lead_snapshot em lotes.")
-        offset = 0
-        total_rows = 0
-        while True:
-            query = """
-            SELECT payload
-            FROM lead_snapshot
-            WHERE payload IS NOT NULL
-            LIMIT %s OFFSET %s
-            """
-            try:
-                with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                    cursor.execute(query, (batch_size, offset))
-                    rows = cursor.fetchall()
-                if not rows:
-                    break
-                total_rows += len(rows)
-                yield rows
-                offset += batch_size
-            except Exception as e:
-                logger.error(f"Erro ao executar query em lote: {e}")
-                raise DatabaseUpdateError(f"Erro ao executar query: {e}")
-        logger.info(f"Recuperados {total_rows} registros do banco de dados.")
-
-    def parse_payloads_batch(self, rows):
-        offices = set()
-        negotiators = set()
-        processed = 0
-        skipped_invalid_type = 0
-        skipped_missing_office = 0
-        skipped_missing_negotiator = 0
-        skipped_json_error = 0
-        for row in rows:
-            try:
-                if isinstance(row["payload"], str):
-                    payload = json.loads(row["payload"])
-                elif isinstance(row["payload"], dict):
-                    payload = row["payload"]
-                else:
-                    skipped_invalid_type += 1
-                    continue
-                # Assuming payload has 'escritorio_responsavel' and 'negociador' fields
-                has_office = False
-                if "escritorio_responsavel" in payload:
-                    office_name = payload["escritorio_responsavel"]
-                    if isinstance(office_name, str) and office_name.strip():
-                        sanitized_office = sanitize_string(office_name)
-                        if sanitized_office:
-                            offices.add(sanitized_office)
-                            has_office = True
-                if not has_office:
-                    skipped_missing_office += 1
-                has_negotiator = False
-                if "negociador" in payload:
-                    neg_name = payload["negociador"]
-                    if isinstance(neg_name, str) and neg_name.strip():
-                        sanitized_neg = sanitize_string(neg_name)
-                        if sanitized_neg:
-                            negotiators.add(sanitized_neg)
-                            has_negotiator = True
-                if not has_negotiator:
-                    skipped_missing_negotiator += 1
-                processed += 1
-            except (json.JSONDecodeError, TypeError):
-                skipped_json_error += 1
-                continue
-        return (
-            offices,
-            negotiators,
-            processed,
-            skipped_invalid_type,
-            skipped_missing_office,
-            skipped_missing_negotiator,
-            skipped_json_error,
-        )
+        self.base_dir = Path(__file__).parent.parent.parent  # Vai até a raiz do projeto
 
     def update_json_files(self, offices, negotiators):
-        logger.debug("Iniciando atualização dos arquivos JSON.")
-        # Update utils/escritorios.json
-        offices_file = self.base_dir / "utils" / "escritorios.json"
+        logger.debug(
+            f"Iniciando atualização dos arquivos JSON para mesa '{self.mesa}'."
+        )
+
+        # Criar nomes de arquivo com sufixo da mesa
+        offices_filename = f"escritorios_{self.mesa}.json"
+        negotiators_filename = f"negociadores_{self.mesa}.json"
+
+        # Update escritorios file
+        offices_file = self.base_dir / "utils" / offices_filename
         try:
-            data = {"escritorios": offices, "total": len(offices)}
+            # Convert offices set to dict for JSON serialization
+            offices_dict = {office: office for office in offices}
+            data = {"escritorios": offices_dict, "total": len(offices)}
             with open(offices_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             logger.info(
@@ -143,24 +66,16 @@ class DatabaseUpdater:
             logger.error(f"Erro ao salvar escritórios: {e}")
             raise DatabaseUpdateError(f"Erro ao salvar escritórios: {e}")
 
-        # Update utils/negociadores.json
-        neg_file = self.base_dir / "utils" / "negociadores.json"
+        # Update negociadores file
+        neg_file = self.base_dir / "utils" / negotiators_filename
         try:
-            # Load existing mappings to preserve custom ones
-            existing_negotiators = {}
-            if neg_file.exists():
-                with open(neg_file, "r", encoding="utf-8") as f:
-                    existing_negotiators = json.load(f)
-
-            # Add new negotiators from DB if not already present
-            for neg in negotiators:
-                if neg not in existing_negotiators:
-                    existing_negotiators[neg] = neg
-
+            # Convert negotiators set to dict for JSON serialization
+            negotiators_dict = {neg: neg for neg in negotiators}
+            data = {"negociadores": negotiators_dict, "total": len(negotiators)}
             with open(neg_file, "w", encoding="utf-8") as f:
-                json.dump(existing_negotiators, f, ensure_ascii=False, indent=2)
+                json.dump(data, f, ensure_ascii=False, indent=2)
             logger.info(
-                f"Arquivo {neg_file} atualizado com {len(existing_negotiators)} negociadores."
+                f"Arquivo {neg_file} atualizado com {len(negotiators)} negociadores."
             )
         except Exception as e:
             logger.error(f"Erro ao salvar negociadores: {e}")
@@ -168,60 +83,231 @@ class DatabaseUpdater:
 
     def update_database(self):
         start_time = time.time()
-        logger.info("Iniciando atualização do banco de dados.")
-        conn = None
+        logger.info(f"Iniciando atualização dos mapeamentos para mesa '{self.mesa}'.")
+
+        # Fazer uma única busca na API para obter leads
+        all_leads = self.get_all_leads_from_api()
+
+        # Processar leads para extrair escritórios e negociadores
+        all_offices, all_negotiators = self.process_leads_for_mappings(all_leads)
+
+        # Salvar dados nos arquivos JSON por mesa
+        self.update_json_files(all_offices, all_negotiators)
+
+        elapsed = time.time() - start_time
+        logger.info(
+            f"Atualização concluída com sucesso em {elapsed:.2f} segundos. "
+            f"Escritórios únicos: {len(all_offices)}, Negociadores únicos: {len(all_negotiators)}."
+        )
+
+    def get_all_leads_from_api(self) -> list:
+        """Obtém todos os leads da API Parceiros em uma única busca usando paralelização.
+
+        A API Parceiros retorna leads em páginas de 10 itens cada.
+        Este método usa paralelização para melhorar a performance.
+        """
+        logger.info(
+            f"Iniciando busca paralela de leads na API Parceiros para mesa '{self.mesa}'."
+        )
+
+        # Obter credenciais
+        pipeline = MESA_TO_PIPELINE[self.mesa]
+        credential_map = {
+            "BT Blue Pipeline": (
+                "PARCEIROS_BT_BLUE_USERNAME",
+                "PARCEIROS_BT_BLUE_PASSWORD",
+            ),
+            "2B Ativos Pipeline": (
+                "PARCEIROS_2B_ATIVOS_USERNAME",
+                "PARCEIROS_2B_ATIVOS_PASSWORD",
+            ),
+            "BBMD Pipeline": ("PARCEIROS_BBMD_USERNAME", "PARCEIROS_BBMD_PASSWORD"),
+        }
+
+        username_var, password_var = credential_map[pipeline]
+        username = os.getenv(username_var)
+        password = os.getenv(password_var)
+
+        if not username or not password:
+            raise DatabaseUpdateError(
+                f"Credenciais não encontradas para mesa '{self.mesa}'. "
+                f"Verifique as variáveis de ambiente {username_var} e {password_var}."
+            )
+
         try:
-            conn = self.connect()
-            with conn:  # Use context manager for connection
-                all_offices = set()
-                all_negotiators = set()
-                total_processed = 0
-                total_skipped_invalid_type = 0
-                total_skipped_missing_office = 0
-                total_skipped_missing_negotiator = 0
-                total_skipped_json_error = 0
-                for batch in self.fetch_data(conn):
-                    (
-                        offices,
-                        negotiators,
-                        processed,
-                        skipped_invalid_type,
-                        skipped_missing_office,
-                        skipped_missing_negotiator,
-                        skipped_json_error,
-                    ) = self.parse_payloads_batch(batch)
-                    all_offices.update(offices)
-                    all_negotiators.update(negotiators)
-                    total_processed += processed
-                    total_skipped_invalid_type += skipped_invalid_type
-                    total_skipped_missing_office += skipped_missing_office
-                    total_skipped_missing_negotiator += skipped_missing_negotiator
-                    total_skipped_json_error += skipped_json_error
-                total_skipped = (
-                    total_skipped_invalid_type
-                    + total_skipped_missing_office
-                    + total_skipped_missing_negotiator
-                    + total_skipped_json_error
+            client = ParceirosClient(username, password)
+            client.authenticate()
+
+            # Obter informações de paginação
+            logger.info("Obtendo informações de paginação...")
+            leads_url = f"{client.base_url}/pendencia"
+            headers = {
+                "Authorization": f"Bearer {client.token}",
+                "Content-Type": "application/json",
+            }
+            params = {"numero_pagina": 1, "tamanho_pagina": client.PAGE_SIZE}
+
+            response = client.session.get(
+                leads_url, headers=headers, params=params, timeout=client.timeout
+            )
+            if response.status_code != 200:
+                raise DatabaseUpdateError(
+                    f"Erro ao obter informações de paginação: {response.status_code}"
                 )
-                logger.info(
-                    f"Parsing total concluído: {total_processed} processados, {total_skipped} pulados "
-                    f"(tipo inválido: {total_skipped_invalid_type}, sem escritório: {total_skipped_missing_office}, "
-                    f"sem negociador: {total_skipped_missing_negotiator}, erro JSON: {total_skipped_json_error}). "
-                    f"Escritórios únicos: {len(all_offices)}, Negociadores únicos: {len(all_negotiators)}."
+
+            pagination_data = response.json()
+            if "informacao" not in pagination_data:
+                raise DatabaseUpdateError(
+                    "Informações de paginação não encontradas na resposta da API"
                 )
-                self.update_json_files(
-                    {k: k for k in all_offices}, {k: k for k in all_negotiators}
+
+            info = pagination_data["informacao"]
+            total_pages = info.get("total_paginas")
+            total_items = info.get("quantidade_itens")
+
+            if not total_pages:
+                raise DatabaseUpdateError(
+                    "Número total de páginas não informado pela API"
                 )
-                elapsed = time.time() - start_time
-                logger.info(
-                    f"Atualização do banco de dados concluída com sucesso em {elapsed:.2f} segundos."
-                )
-        except DatabaseUpdateError:
-            raise
+
+            logger.info(
+                f"API retornou {total_pages} páginas totais com {total_items} itens"
+            )
+
+            # Estratégia de paralelização
+            max_workers = min(10, total_pages)  # Máximo 10 threads simultâneas
+            batch_size = 50  # Processar em lotes de 50 páginas
+
+            all_leads = []
+            processed_pages = 1  # Página 1 já foi processada
+            start_time = time.time()
+
+            logger.info(
+                f"Iniciando captura paralela com {max_workers} threads simultâneas..."
+            )
+            logger.info(f"Total estimado: {total_pages} páginas ({total_items} leads)")
+
+            with tqdm(
+                desc="Capturando leads",
+                unit="página",
+                initial=1,
+                total=total_pages,
+                leave=False,
+                smoothing=0.1,
+            ) as pbar:
+
+                # Processar em lotes para não sobrecarregar a memória
+                for batch_start in range(2, total_pages + 1, batch_size):
+                    batch_end = min(batch_start + batch_size, total_pages + 1)
+                    pages_to_fetch = list(range(batch_start, batch_end))
+
+                    logger.debug(
+                        f"Processando lote: páginas {batch_start} a {batch_end-1}"
+                    )
+
+                    # Usar ThreadPoolExecutor para paralelização
+                    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                        # Submeter todas as requisições do lote
+                        future_to_page = {
+                            executor.submit(client.get_leads_page, page): page
+                            for page in pages_to_fetch
+                        }
+
+                        # Processar resultados à medida que chegam
+                        completed_in_batch = 0
+                        for future in as_completed(future_to_page):
+                            page = future_to_page[future]
+                            try:
+                                leads_batch = future.result()
+                                if leads_batch:
+                                    all_leads.extend(leads_batch)
+                                else:
+                                    logger.warning(f"Página {page} retornou vazia")
+
+                                completed_in_batch += 1
+                                processed_pages += 1
+
+                                # Atualizar progresso apenas quando completar um lote ou periodicamente
+                                if completed_in_batch % max(
+                                    1, len(pages_to_fetch) // 10
+                                ) == 0 or completed_in_batch == len(pages_to_fetch):
+                                    pbar.n = processed_pages
+                                    pbar.set_description(
+                                        f"Capturando leads (página {processed_pages}/{total_pages})"
+                                    )
+                                    pbar.refresh()
+
+                            except Exception as e:
+                                logger.error(f"Erro ao processar página {page}: {e}")
+                                completed_in_batch += 1
+                                processed_pages += 1
+
+                                if completed_in_batch % max(
+                                    1, len(pages_to_fetch) // 10
+                                ) == 0 or completed_in_batch == len(pages_to_fetch):
+                                    pbar.n = processed_pages
+                                    pbar.set_description(
+                                        f"Capturando leads (página {processed_pages}/{total_pages})"
+                                    )
+                                    pbar.refresh()
+
+            # Calcular estatísticas de tempo
+            end_time = time.time()
+            total_time = end_time - start_time
+            avg_time_per_page = (
+                total_time / (total_pages - 1) if total_pages > 1 else total_time
+            )
+
+            logger.info(f"Total de leads capturados: {len(all_leads)}")
+            logger.info(
+                f"Tempo total: {total_time:.2f}s | Média por página: {avg_time_per_page:.2f}s"
+            )
+            logger.info(f"Performance: {len(all_leads)/total_time:.1f} leads/segundo")
+
+            return all_leads
+
+        except ParceirosAPIError as e:
+            logger.error(f"Erro na API Parceiros: {e}")
+            raise DatabaseUpdateError(f"Erro ao obter leads da API Parceiros: {e}")
         except Exception as e:
-            logger.error(f"Erro inesperado durante atualização: {e}")
-            raise DatabaseUpdateError(f"Erro inesperado durante atualização: {e}")
-        finally:
-            if conn:
-                conn.close()
-                logger.debug("Conexão com o banco de dados fechada.")
+            logger.error(f"Erro inesperado ao obter leads: {e}")
+            raise DatabaseUpdateError(f"Erro inesperado ao obter leads: {e}")
+
+    def process_leads_for_mappings(self, all_leads: list) -> tuple[set, set]:
+        """Processa os leads para extrair escritórios e negociadores.
+
+        Args:
+            all_leads: Lista de leads obtidos da API
+
+        Returns:
+            Tupla com (escritorios_set, negociadores_set)
+        """
+        logger.info("Processando leads para extrair mapeamentos...")
+
+        offices = set()
+        negotiators = set()
+
+        # Barra de progresso combinada para processamento
+        with tqdm(
+            total=len(all_leads),
+            desc="Processando mapeamentos",
+            unit="lead",
+            leave=False,
+        ) as pbar:
+            for lead in all_leads:
+                # Extrair escritório
+                office = lead.get("escritorio_responsavel")
+                if office and isinstance(office, str) and office.strip():
+                    offices.add(office.strip())
+
+                # Extrair negociador
+                negotiator = lead.get("negociador")
+                if negotiator and isinstance(negotiator, str) and negotiator.strip():
+                    negotiators.add(sanitize_string(negotiator.strip()))
+
+                pbar.update(1)
+
+        logger.info(
+            f"Processamento concluído: {len(offices)} escritórios e {len(negotiators)} negociadores únicos."
+        )
+        return offices, negotiators

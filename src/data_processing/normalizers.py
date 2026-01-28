@@ -8,36 +8,43 @@ import Levenshtein
 from .validator import is_valid_email
 
 
-# Cache para escritórios carregados
-_ESCRITORIOS_CACHE: Optional[dict] = None
+# Cache para escritórios carregados por mesa
+_ESCRITORIOS_CACHE: dict[str, dict] = {}  # type: ignore[F824]
 
 
-def _load_valid_escritorios() -> dict:
+def _load_valid_escritorios(mesa: Optional[str] = None) -> dict:
     """
-    Carrega a lista válida de escritórios do arquivo JSON.
+    Carrega a lista válida de escritórios do arquivo JSON específico da mesa.
     O resultado é armazenado em cache para eficiência.
+
+    Args:
+        mesa: Nome da mesa (btblue, bbmd, 2bativos). Se None, usa arquivo antigo.
 
     Returns:
         Dicionário com nomes válidos de escritórios
     """
     global _ESCRITORIOS_CACHE
 
-    if _ESCRITORIOS_CACHE is not None:
-        return _ESCRITORIOS_CACHE
+    cache_key = mesa or "default"
+    if cache_key in _ESCRITORIOS_CACHE:
+        return _ESCRITORIOS_CACHE[cache_key]
 
     # Obtém o caminho do arquivo JSON
     current_dir = Path(__file__).parent.parent
-    json_path = current_dir / "utils" / "escritorios.json"
+    if mesa:
+        json_path = current_dir / "utils" / f"escritorios_{mesa.lower()}.json"
+    else:
+        json_path = current_dir / "utils" / "escritorios.json"
 
     try:
         with open(json_path, "r", encoding="utf-8") as f:
             data = json.load(f)
-            _ESCRITORIOS_CACHE = data.get("escritorios", {})
-            return _ESCRITORIOS_CACHE
+            _ESCRITORIOS_CACHE[cache_key] = data.get("escritorios", {})
+            return _ESCRITORIOS_CACHE[cache_key]
     except (FileNotFoundError, json.JSONDecodeError):
         # Se não conseguir carregar, retorna dicionário vazio
-        _ESCRITORIOS_CACHE = {}
-        return _ESCRITORIOS_CACHE
+        _ESCRITORIOS_CACHE[cache_key] = {}
+        return _ESCRITORIOS_CACHE[cache_key]
 
 
 def _find_best_match(
@@ -80,9 +87,11 @@ def _find_best_match(
     return None
 
 
-def normalize_escritorio(escritorio_str: str) -> tuple[str, Optional[str]]:
+def normalize_escritorio(
+    escritorio_str: str, mesa: Optional[str] = None
+) -> tuple[str, Optional[str]]:
     """
-    Normaliza o nome do escritório verificando contra a lista válida.
+    Normaliza o nome do escritório verificando contra a lista válida da mesa.
 
     Se o nome exato (case-insensitive) for encontrado, retorna o nome válido.
     Se não encontrado, usa Levenshtein distance para encontrar o melhor match.
@@ -90,6 +99,7 @@ def normalize_escritorio(escritorio_str: str) -> tuple[str, Optional[str]]:
 
     Args:
         escritorio_str: Nome do escritório da entrada
+        mesa: Nome da mesa para carregar o arquivo correto
 
     Returns:
         Tupla (nome_normalizado, nome_original_ou_matched)
@@ -103,7 +113,7 @@ def normalize_escritorio(escritorio_str: str) -> tuple[str, Optional[str]]:
     if not escritorio_str:
         return "", None
 
-    valid_escritorios = _load_valid_escritorios()
+    valid_escritorios = _load_valid_escritorios(mesa)
     if not valid_escritorios:
         return escritorio_str, None
 

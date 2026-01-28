@@ -125,6 +125,50 @@ class TestPloomesSync:
         # successfully_deleted conta apenas deleções no deletion_stage após preservação
         assert report.skipped_deletions == 0
 
+    def test_process_cnj_list_with_ja_existe_error(self, mock_client):
+        """Testa processamento de CNJ com erro 'já existe' - deve ser tratado como sucesso."""
+        # Criar sincronizador com erro "já existe"
+        cnj_errors = {"11111111111111111": "Lead já existe no sistema"}
+        sync = PloomesSync(
+            mock_client,
+            target_stage_id=999,
+            deletion_stage_id=888,
+            cnj_errors=cnj_errors,
+        )
+
+        # Mock para deals no estágio de deleção
+        deletion_stage_deals = [
+            {
+                "Id": 123,
+                "StageId": 888,
+                "OtherProperties": [
+                    {
+                        "FieldKey": "deal_20E8290A-809B-4CF1-9345-6B264AED7830",
+                        "StringValue": "11111111111111111",
+                    }
+                ],
+            }
+        ]
+
+        # Mock para search_deals_by_stage
+        def mock_search_deals_by_stage(stage_id):
+            if stage_id == 888:  # deletion_stage
+                return deletion_stage_deals
+            return []
+
+        mock_client.search_deals_by_stage.side_effect = mock_search_deals_by_stage
+
+        cnj_list = ["11111111111111111"]
+        report = sync.process_cnj_list(cnj_list)
+
+        # Deve ser tratado como sucesso sem mover para target_stage
+        assert report.total_processed == 1
+        assert report.successfully_moved == 1  # Contado como sucesso
+        assert report.failed_movements == 0
+
+        # Não deve ter chamado update_deal_stage pois pulou o movimento
+        mock_client.update_deal_stage.assert_not_called()
+
     @patch("src.sync.ploomes_sync.pd.DataFrame.to_excel")
     @patch("src.sync.ploomes_sync.pd.ExcelWriter")
     def test_generate_report_excel(self, mock_writer, mock_to_excel, sync):
