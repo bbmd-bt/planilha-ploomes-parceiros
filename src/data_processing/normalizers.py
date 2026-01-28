@@ -28,7 +28,7 @@ def _load_valid_escritorios(mesa: Optional[str] = None) -> dict:
         return _ESCRITORIOS_CACHE[cache_key]
 
     # Obtém o caminho do arquivo JSON
-    current_dir = Path(__file__).parent.parent
+    current_dir = Path(__file__).parent.parent.parent
     if mesa:
         json_path = current_dir / "utils" / f"escritorios_{mesa.lower()}.json"
     else:
