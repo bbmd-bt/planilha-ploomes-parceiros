@@ -16,6 +16,10 @@ Validação Parceiros:
 - Apenas negócios que já existem em Parceiros serão deletados
 - Se um negócio não existir em Parceiros, ele será preservado para importação futura
 
+Tratamento de erros "já existe":
+- CNJs com erro contendo "já existe" são considerados casos de sucesso e serão deletados
+- Eles são removidos da lista de preservação e tratados como negócios a serem deletados
+
 Uso:
     python src/delete_deals.py --input arquivo.xlsx --api-token TOKEN --pipeline PIPELINE
 """
@@ -362,7 +366,7 @@ python src/delete_deals.py \\
                 logger.info(f"Validando interações para estágio {stage_id}...")
                 validate_cmd = [
                     sys.executable,
-                    str(Path(__file__).parent / "validate_interactions.py"),
+                    str(Path(__file__).parent.parent / "validate_interactions.py"),
                     "--input",
                     str(args.input),
                     "--stage-id",

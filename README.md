@@ -654,13 +654,14 @@ O script gera um relatório Excel com duas abas:
 
 ### Regras de Processamento
 
-1. **Carregamento**: Carregar CNJs do arquivo de entrada (estes negócios devem ser preservados)
-2. **Busca de Antigos**: Buscar todos os negócios no estágio de deleção criados antes das 17:00 do dia atual
-3. **Filtragem**: Excluir da deleção os negócios cujos CNJs estão na lista de preservação
-4. **Deleção**: Deletar os negócios antigos filtrados
-5. **Validação de Interações**: Executar validação de interações para estágios de origem usados
-6. **Upload no Banco**: Fazer upload do histórico de deleção na tabela `negociacoes`
-7. **Preservação**: Os negócios do arquivo de entrada permanecem intocados na Ploomes
+1. **Carregamento**: Carregar CNJs do arquivo de entrada (estes negócios devem ser preservados, exceto aqueles com erro "já existe" que serão deletados)
+2. **Filtragem de Preservação**: CNJs com erro contendo "já existe" são removidos da lista de preservação e marcados para deleção
+3. **Busca de Antigos**: Buscar todos os negócios no estágio de deleção criados antes das 17:00 do dia atual
+4. **Filtragem**: Excluir da deleção os negócios cujos CNJs estão na lista de preservação filtrada
+5. **Deleção**: Deletar os negócios antigos filtrados (incluindo aqueles que tinham erro "já existe")
+6. **Validação de Interações**: Executar validação de interações para estágios de origem usados
+7. **Upload no Banco**: Fazer upload do histórico de deleção na tabela `negociacoes`
+8. **Preservação**: Os negócios do arquivo de entrada sem erro "já existe" permanecem intocados na Ploomes
 
 ### Estrutura da Tabela de Upload
 

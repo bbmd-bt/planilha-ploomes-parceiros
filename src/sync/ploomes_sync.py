@@ -95,7 +95,18 @@ class PloomesSync:
         report = SyncReport()
         report.total_processed = len(cnj_list)
 
-        self.cnj_list = set(cnj_list)  # Store for later use in deletion
+        # Filtrar CNJs que devem ser preservados (excluir aqueles com erro "já existe")
+        preserved_cnjs = []
+        for cnj in cnj_list:
+            error_description = self.cnj_errors.get(cnj)
+            if error_description and "já existe" in error_description.lower():
+                logger.info(
+                    f"CNJ {cnj}: erro indica que já existe, será deletado (não preservado)"
+                )
+            else:
+                preserved_cnjs.append(cnj)
+
+        self.cnj_list = set(preserved_cnjs)  # Store for later use in deletion
 
         # Verificar se o estágio de deleção está vazio
         deletion_stage_empty = False
@@ -273,15 +284,6 @@ class PloomesSync:
         result = ProcessingResult(cnj=cnj)
         logger.info(f"Processando CNJ: {cnj}")
         try:
-            # Verificar se o erro para este CNJ indica que já existe
-            error_description = self.cnj_errors.get(cnj)
-            if error_description and "já existe" in error_description.lower():
-                logger.info(
-                    f"CNJ {cnj}: erro indica que já existe, tratando como sucesso e mantendo no estágio de deleção"
-                )
-                result.moved_successfully = True
-                return result
-
             # Buscar negócio por CNJ
             deals = self.client.search_deals_by_cnj(cnj)
 
