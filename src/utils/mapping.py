@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Optional
 
 # Cache para mapeamentos de negociadores por mesa
-_NEGOTIATOR_CACHE: dict[str, dict] = {}  # type: ignore[F824]
+_NEGOTIATOR_CACHE: dict[str, dict] = {}  # noqa: F824
 
 
 def _load_negotiator_mapping(mesa: Optional[str] = None) -> dict:
@@ -16,8 +16,6 @@ def _load_negotiator_mapping(mesa: Optional[str] = None) -> dict:
     Returns:
         Dicionário com mapeamento de negociadores
     """
-    global _NEGOTIATOR_CACHE
-
     cache_key = mesa or "default"
     if cache_key in _NEGOTIATOR_CACHE:
         return _NEGOTIATOR_CACHE[cache_key]

@@ -9,7 +9,7 @@ from .validator import is_valid_email
 
 
 # Cache para escritórios carregados por mesa
-_ESCRITORIOS_CACHE: dict[str, dict] = {}  # type: ignore[F824]
+_ESCRITORIOS_CACHE: dict[str, dict] = {}  # noqa: F824
 
 
 def _load_valid_escritorios(mesa: Optional[str] = None) -> dict:
@@ -23,8 +23,6 @@ def _load_valid_escritorios(mesa: Optional[str] = None) -> dict:
     Returns:
         Dicionário com nomes válidos de escritórios
     """
-    global _ESCRITORIOS_CACHE
-
     cache_key = mesa or "default"
     if cache_key in _ESCRITORIOS_CACHE:
         return _ESCRITORIOS_CACHE[cache_key]
