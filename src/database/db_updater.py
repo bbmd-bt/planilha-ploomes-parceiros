@@ -8,7 +8,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from loguru import logger
 from dotenv import load_dotenv
 from src.clients.parceiros_client import ParceirosClient, ParceirosAPIError
+from src.upload.upload_leads_history import DatabaseConnection
 from tqdm import tqdm
+from psycopg2.extras import execute_values
 
 
 class DatabaseUpdateError(Exception):
@@ -81,6 +83,63 @@ class ApiUpdater:
             logger.error(f"Erro ao salvar negociadores: {e}")
             raise DatabaseUpdateError(f"Erro ao salvar negociadores: {e}")
 
+    def update_database_table(self, offices_list: list, negotiators_list: list):
+        """Atualiza as tabelas escritorios_parceiros e partner_negotiators no banco de dados."""
+        logger.info(
+            f"Iniciando atualização das tabelas para mesa '{self.mesa}' "
+            f"com {len(offices_list)} escritórios e {len(negotiators_list)} negociadores."
+        )
+
+        try:
+            with DatabaseConnection() as db:
+                cursor = db.connection.cursor()
+
+                # Salvar escritórios
+                if offices_list:
+                    query_offices = """
+                    INSERT INTO public.escritorios_parceiros (partner_id, office_name, desk_name, updated_at)
+                    VALUES %s
+                    ON CONFLICT (partner_id)
+                    DO UPDATE SET
+                        office_name = EXCLUDED.office_name,
+                        desk_name = EXCLUDED.desk_name,
+                        updated_at = CURRENT_TIMESTAMP,
+                        active = true
+                    """
+                    values_offices = [
+                        (o["partner_id"], o["office_name"], o["desk_name"])
+                        for o in offices_list
+                    ]
+                    execute_values(cursor, query_offices, values_offices)
+                    logger.info(
+                        f"Tabela escritorios_parceiros atualizada com {len(offices_list)} registros."
+                    )
+
+                # Salvar negociadores
+                if negotiators_list:
+                    query_negotiators = """
+                    INSERT INTO public.partner_negotiators (partner_id, negotiator_name, desk_name, updated_at)
+                    VALUES %s
+                    ON CONFLICT (partner_id)
+                    DO UPDATE SET
+                        negotiator_name = EXCLUDED.negotiator_name,
+                        desk_name = EXCLUDED.desk_name,
+                        updated_at = CURRENT_TIMESTAMP,
+                        active = true
+                    """
+                    values_negotiators = [
+                        (n["partner_id"], n["negotiator_name"], n["desk_name"])
+                        for n in negotiators_list
+                    ]
+                    execute_values(cursor, query_negotiators, values_negotiators)
+                    logger.info(
+                        f"Tabela partner_negotiators atualizada com {len(negotiators_list)} registros."
+                    )
+
+        except Exception as e:
+            logger.error(f"Erro ao salvar nas tabelas do banco: {e}")
+            raise DatabaseUpdateError(f"Erro ao salvar nas tabelas do banco: {e}")
+
     def update_database(self):
         start_time = time.time()
         logger.info(f"Iniciando atualização dos mapeamentos para mesa '{self.mesa}'.")
@@ -89,10 +148,15 @@ class ApiUpdater:
         all_leads = self.get_all_leads_from_api()
 
         # Processar leads para extrair escritórios e negociadores
-        all_offices, all_negotiators = self.process_leads_for_mappings(all_leads)
+        all_offices, all_negotiators, offices_list, negotiators_list = (
+            self.process_leads_for_mappings(all_leads)
+        )
 
         # Salvar dados nos arquivos JSON por mesa
         self.update_json_files(all_offices, all_negotiators)
+
+        # Salvar dados no banco de dados
+        self.update_database_table(offices_list, negotiators_list)
 
         elapsed = time.time() - start_time
         logger.info(
@@ -273,19 +337,23 @@ class ApiUpdater:
             logger.error(f"Erro inesperado ao obter leads: {e}")
             raise DatabaseUpdateError(f"Erro inesperado ao obter leads: {e}")
 
-    def process_leads_for_mappings(self, all_leads: list) -> tuple[set, set]:
+    def process_leads_for_mappings(
+        self, all_leads: list
+    ) -> tuple[set, set, list, list]:
         """Processa os leads para extrair escritórios e negociadores.
 
         Args:
             all_leads: Lista de leads obtidos da API
 
         Returns:
-            Tupla com (escritorios_set, negociadores_set)
+            Tupla com (escritorios_set, negociadores_set, offices_list, negotiators_list)
         """
         logger.info("Processando leads para extrair mapeamentos...")
 
         offices = set()
         negotiators = set()
+        offices_list = []
+        negotiators_list = []
 
         # Barra de progresso combinada para processamento
         with tqdm(
@@ -296,18 +364,46 @@ class ApiUpdater:
         ) as pbar:
             for lead in all_leads:
                 # Extrair escritório
-                office = lead.get("escritorio_responsavel")
-                if office and isinstance(office, str) and office.strip():
-                    offices.add(office.strip())
+                office_name = lead.get("escritorio_responsavel")
+                if office_name and isinstance(office_name, str) and office_name.strip():
+                    office_name = office_name.strip()
+                    offices.add(office_name)
+
+                    # Para o banco, coletar dados do escritório
+                    partner_id_office = lead.get("id_escritorio_origem_lead")
+                    if partner_id_office:
+                        offices_list.append(
+                            {
+                                "partner_id": int(partner_id_office),
+                                "office_name": office_name,
+                                "desk_name": self.mesa,
+                            }
+                        )
 
                 # Extrair negociador
-                negotiator = lead.get("negociador")
-                if negotiator and isinstance(negotiator, str) and negotiator.strip():
-                    negotiators.add(sanitize_string(negotiator.strip()))
+                negotiator_name = lead.get("negociador")
+                if (
+                    negotiator_name
+                    and isinstance(negotiator_name, str)
+                    and negotiator_name.strip()
+                ):
+                    negotiator_name = sanitize_string(negotiator_name.strip())
+                    negotiators.add(negotiator_name)
+
+                    # Para o banco, coletar dados do negociador
+                    partner_id_neg = lead.get("id_negociador")  # Campo correto
+                    if partner_id_neg:
+                        negotiators_list.append(
+                            {
+                                "partner_id": int(partner_id_neg),
+                                "negotiator_name": negotiator_name,
+                                "desk_name": self.mesa,
+                            }
+                        )
 
                 pbar.update(1)
 
         logger.info(
             f"Processamento concluído: {len(offices)} escritórios e {len(negotiators)} negociadores únicos."
         )
-        return offices, negotiators
+        return offices, negotiators, offices_list, negotiators_list

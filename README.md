@@ -425,14 +425,33 @@ python src/main.py --mesa "Nome da Mesa" --update-db
 
 **Nota**: Se a atualização falhar, a execução será abortada para evitar processamento com dados desatualizados.
 
+### Atualização Isolada para Todas as Mesas
+
+Para executar a atualização dos mapeamentos de forma isolada para todas as mesas suportadas:
+
+```bash
+python src/database/update_all_mesas.py
+```
+
+#### Com Logging Detalhado
+
+```bash
+python src/database/update_all_mesas.py --log-level DEBUG --log logs/update_all_mesas.log
+```
+
+Este script processa sequencialmente todas as mesas (btblue, 2bativos, bbmd) e atualiza os arquivos JSON específicos de cada mesa em `utils/`.
+
 ### Estrutura dos Dados JSON
 
-Os arquivos `utils/escritorios.json` e `utils/negociadores.json` contêm mapeamentos no formato:
+Os arquivos `utils/escritorios_{mesa}.json` e `utils/negociadores_{mesa}.json` contêm mapeamentos no formato:
 
 ```json
 {
-  "1": "Escritório ABC",
-  "2": "Escritório XYZ"
+  "escritorios": {
+    "Escritório ABC": "Escritório ABC",
+    "Escritório XYZ": "Escritório XYZ"
+  },
+  "total": 2
 }
 ```
 
