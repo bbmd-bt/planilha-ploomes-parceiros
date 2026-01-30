@@ -19,7 +19,7 @@ from .normalizers import (
 
 
 class PlanilhaTransformer:
-    BBMD_OFFICE = "BERTOLINI E BERNARDES MADEIRA E DAMBROS ADVOGADOS ASSOCIADOS"
+    BBMD_OFFICE = "BERTOLINI E BERNARDES, MADEIRA E DAMBROS ADVOGADOS ASSOCIADOS"
 
     def __init__(self, ploomes_client=None, deletion_stage_id=None, mesa=None):
         self.errors = []
