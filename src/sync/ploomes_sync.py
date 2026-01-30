@@ -127,7 +127,7 @@ class PloomesSync:
                 # Submeter tarefas
                 future_to_cnj = {
                     executor.submit(self._process_single_cnj, cnj): cnj
-                    for cnj in cnj_list
+                    for cnj in preserved_cnjs
                 }
 
                 # Coletar resultados
@@ -225,34 +225,40 @@ class PloomesSync:
 
                         cnj_label = self._extract_cnj_from_deal(deal) or "sem CNJ"
 
-                        # Skip deletion if CNJ is in the preserved list
+                        # Deletar se CNJ está na lista de erros da planilha (exceto "já existe", que já foram filtrados)
+                        # ou se existe em Parceiros
+                        should_delete = False
                         if cnj_label in self.cnj_list:
                             logger.info(
-                                f"{cnj_label}: negócio {deal_id} preservado (CNJ na lista), pulando deleção"
+                                f"{cnj_label}: negócio {deal_id} está na planilha de erros, será deletado"
                             )
-                            continue
-
-                        # Verificar se o negócio existe em Parceiros antes de deletar
-                        if not self._deal_exists_in_parceiros(cnj_label):
-                            logger.warning(
-                                f"{cnj_label}: negócio {deal_id} não existe em Parceiros, pulando deleção"
-                            )
-                            skipped_deletions += 1
-                            continue
-
-                        if self.dry_run:
+                            should_delete = True
+                        elif self._deal_exists_in_parceiros(cnj_label):
                             logger.info(
-                                f"[DRY-RUN] {cnj_label}: negócio {deal_id} seria deletado"
+                                f"{cnj_label}: negócio {deal_id} existe em Parceiros, será deletado"
                             )
-                            deleted_count += 1
-                        elif self.client.delete_deal(deal_id):
-                            deleted_count += 1
-                            logger.info(f"{cnj_label}: negócio {deal_id} deletado")
+                            should_delete = True
                         else:
-                            skipped_deletions += 1
-                            logger.error(
-                                f"{cnj_label}: falha ao deletar negócio {deal_id}"
+                            logger.warning(
+                                f"{cnj_label}: negócio {deal_id} não está na planilha nem em Parceiros, pulando deleção"
                             )
+                            skipped_deletions += 1
+                            continue
+
+                        if should_delete:
+                            if self.dry_run:
+                                logger.info(
+                                    f"[DRY-RUN] {cnj_label}: negócio {deal_id} seria deletado"
+                                )
+                                deleted_count += 1
+                            elif self.client.delete_deal(deal_id):
+                                deleted_count += 1
+                                logger.info(f"{cnj_label}: negócio {deal_id} deletado")
+                            else:
+                                skipped_deletions += 1
+                                logger.error(
+                                    f"{cnj_label}: falha ao deletar negócio {deal_id}"
+                                )
             except Exception as e:
                 logger.error(f"Erro ao deletar negócios no estágio de deleção: {e}")
 

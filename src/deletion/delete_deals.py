@@ -6,15 +6,16 @@ Este script lê CNJs de um arquivo Excel, busca os negócios correspondentes na 
 move-os para um estágio específico e deleta aqueles que foram movidos com sucesso.
 
 IMPORTANTE: Antes de deletar negócios no estágio de deleção, o script verifica se cada
-negócio já existe na plataforma Parceiros. Isso previne que negócios ainda não importados
-sejam deletados prematuramente. Negócios que não existem em Parceiros são preservados
-para serem importados no próximo ciclo.
+negócio já existe na plataforma Parceiros ou se está presente na planilha de erros de entrada.
+Negócios que estão na planilha de erros (exceto aqueles com erro "já existe") são deletados
+independentemente de existirem em Parceiros. Negócios que não estão na planilha nem em Parceiros
+são preservados para serem importados no próximo ciclo.
 
 Validação Parceiros:
 - Se as credenciais PARCEIROS_API_USERNAME e PARCEIROS_API_PASSWORD estiverem configuradas,
   cada negócio será validado contra a API da Parceiros antes da deleção
-- Apenas negócios que já existem em Parceiros serão deletados
-- Se um negócio não existir em Parceiros, ele será preservado para importação futura
+- Apenas negócios que já existem em Parceiros ou estão na planilha de erros serão deletados
+- Se um negócio não existir em Parceiros nem na planilha, ele será preservado para importação futura
 
 Tratamento de erros "já existe":
 - CNJs com erro contendo "já existe" são considerados casos de sucesso e serão deletados

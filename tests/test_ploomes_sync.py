@@ -161,9 +161,10 @@ class TestPloomesSync:
         cnj_list = ["11111111111111111"]
         report = sync.process_cnj_list(cnj_list)
 
-        # Deve ser tratado como sucesso sem mover para target_stage
+        # Deve ser tratado como sucesso - não movido para target_stage, mas deletado se existir
         assert report.total_processed == 1
-        assert report.successfully_moved == 1  # Contado como sucesso
+        assert report.successfully_moved == 0  # Não movido
+        assert report.successfully_deleted == 1  # Deletado
         assert report.failed_movements == 0
 
         # Não deve ter chamado update_deal_stage pois pulou o movimento
